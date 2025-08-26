@@ -1,3 +1,13 @@
+import warnings
+from functools import partial
+from typing import  Union
+
+import numpy as np
+import ot as pot
+import torch
+
+
+
 class OTPlanSampler:
     """OTPlanSampler implements sampling coordinates according to an OT plan (wrt squared Euclidean
     cost) with different implementations of the plan calculation."""
