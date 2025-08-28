@@ -175,11 +175,11 @@ def main(argv):
                     plt.legend(["Prior sample z(S)", "Flow", "z(0)"])
                     plt.xticks([])
                     plt.yticks([])
-                    plt.savefig(f"samples/epoch_{epoch}/step_{k}.png")
+                    plt.savefig(f"samples/step_{k}.png")
 
                     writer.add_image(
                         "Samples",
-                        plt.imread(f"samples/epoch_{epoch}/step_{k}.png"),
+                        plt.imread(f"samples/step_{k}.png"),
                         k,
                         dataformats="HWC"
                     )
