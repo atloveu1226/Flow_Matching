@@ -165,18 +165,21 @@ def main(argv):
                     x0_vis = sample_8gaussians(1024)
                     x0_vis_jax = jnp.array(x0_vis.numpy())
                     ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
-                    x1_vis, _ = batch_sample(flowmap_net, params, x0_vis_jax, 10, ts)
+                    x1_vis, traj = batch_sample(flowmap_net, params, x0_vis_jax, 10, ts)
     
-                    x1_vis = np.array(x1_vis)
-                    plt.figure(figsize=(4, 4))
-                    plt.scatter(x1_vis[:, 0], x1_vis[:, 1], s=5, alpha=0.6)
-                    plt.title(f"Step {k}")
-                    plt.savefig(f"samples/step_{k}.png")
-                    plt.close()
+                    n = 2000
+                    plt.figure(figsize=(6, 6))
+                    plt.scatter(traj[0, :n, 0], traj[0, :n, 1], s=10, alpha=0.8, c="black")
+                    plt.scatter(traj[:, :n, 0], traj[:, :n, 1], s=0.2, alpha=0.2, c="olive")
+                    plt.scatter(traj[-1, :n, 0], traj[-1, :n, 1], s=4, alpha=1, c="blue")
+                    plt.legend(["Prior sample z(S)", "Flow", "z(0)"])
+                    plt.xticks([])
+                    plt.yticks([])
+                    plt.savefig(f"samples/epoch_{epoch}/step_{k}.png")
 
                     writer.add_image(
                         "Samples",
-                        plt.imread(f"samples/step_{k}.png"),
+                        plt.imread(f"samples/epoch_{epoch}/step_{k}.png"),
                         k,
                         dataformats="HWC"
                     )
