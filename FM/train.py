@@ -162,11 +162,12 @@ def main(argv):
 
             if k % 1000 == 0:
                 with torch.no_grad():
-                    x0_vis = torch.from_numpy(np.array(sample_8gaussians(512)))  # 例子：源分布采样
-                    x0_vis_jax = jax.device_put(jnp.array(x0_vis.numpy()), jax.devices(FLAGS.device)[0])
-                    x1_vis, _ = batch_sample(flowmap_net, params, x0_vis_jax, N=4)
-
-                    # 转 numpy 绘制
+                    with torch.no_grad():
+                    x0_vis = sample_8gaussians(1024)
+                    x0_vis_jax = jnp.array(x0_vis.numpy())
+                    ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
+                    x1_vis, _ = batch_sample(flowmap_net, params, x0_vis_jax, 10, ts)
+    
                     x1_vis = np.array(x1_vis)
                     plt.figure(figsize=(4, 4))
                     plt.scatter(x1_vis[:, 0], x1_vis[:, 1], s=5, alpha=0.6)
@@ -174,7 +175,6 @@ def main(argv):
                     plt.savefig(f"samples/step_{k}.png")
                     plt.close()
 
-                    # 加到 TensorBoard
                     writer.add_image(
                         "Samples",
                         plt.imread(f"samples/step_{k}.png"),
