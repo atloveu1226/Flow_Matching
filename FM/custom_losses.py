@@ -1,3 +1,24 @@
+import functools
+
+import jax
+import jax.numpy as jnp
+
+from old_settings.common.flow_map import FlowMap
+from old_settings.common.interpolant import Interpolant
+
+def mean_reduce(func):
+    """
+    A decorator that computes the mean of the output of the decorated function.
+    Designed to be used on functions that are already batch-processed (e.g., with jax.vmap).
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        batched_outputs = func(*args, **kwargs)
+        return jnp.mean(batched_outputs)
+
+    return wrapper
+
 def eulerian(
     params,
     x0,
@@ -5,41 +26,8 @@ def eulerian(
     s: float,
     t: float,
     X: FlowMap,
+    interp: Interpolant
 ) -> float:
-
-    #stochastic interpolant
-    interp = Interpolant(
-        alpha=lambda t: 1.0 - t,
-        beta=lambda t: t,
-        alpha_dot=lambda _: -1.0,
-        beta_dot=lambda _: 1.0,
-    )
-    '''
-    Is = interp.calc_It(s, x0, x1)
-    It = interp.calc_It(t, x0, x1)
-    It_dot = interp.calc_It_dot(t, x0, x1)
-    Is_dot = interp.calc_It_dot(s, x0, x1)
-    Xst_Is = X.apply(params, s, t, Is, train=True)
-    dt_Xts_s = X.apply(
-        params, t, s, Xst_Is, train=True, method="partial_s"
-    )
-    Xst_It = X.apply(params, s, t, It, train=True)
-    dt_Xts_t = X.apply(
-        params, t, s, Xst_It, train=True, method="partial_t",
-    )
-    jvp = jax.jvp(
-        lambda x: X.apply(params, s, t, x, train=True),
-        (Is,),
-        (dt_Xts_s,),
-    )[1]
-
-
-    if way == 'Eulerian':
-        return jnp.sum((jvp + It_dot) ** 2)
-
-    if way == 'Lagrangian':
-        return jnp.sum((Is_dot - dt_Xts_t) ** 2)
-    '''
     It = interp.calc_It(t, x0, x1)
     It_dot = interp.calc_It_dot(t, x0, x1)
     Xst_It = X.apply(params, s, t, It, train=True)

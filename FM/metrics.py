@@ -1,3 +1,12 @@
+import math
+from functools import partial
+
+import torch
+import ot as pot
+
+from old_settings.common.interpolant import Interpolant
+
+
 def wasserstein(
     x0: torch.Tensor,
     x1: torch.Tensor,
@@ -31,24 +40,15 @@ def wasserstein(
     return ret
 
 
-import torch
 
-
-
-def NPE_batch(x0: torch.Tensor, x1: torch.Tensor, method="exact"):
+def NPE_batch(x0: torch.Tensor, x1: torch.Tensor, interp: Interpolant, method="exact"):
 
     N, D = x0.shape
     t = torch.rand(N, 1, device=x0.device, dtype=x0.dtype)  # shape (N,1)
-    interp = Interpolant(
-        alpha=lambda t: 1.0 - t,
-        beta=lambda t: t,
-        alpha_dot=lambda _: -1.0,
-        beta_dot=lambda _: 1.0,
-    )
 
     It_dot = interp.calc_It_dot(t, x0, x1)  # shape (N,)
 
-    PE = torch.sum(It_dot**2).mean()
+    PE = torch.sum(It_dot**2, dim=-1).mean()
 
     w2 = torch.tensor(wasserstein(x0, x1, method = method), device=x0.device)
 

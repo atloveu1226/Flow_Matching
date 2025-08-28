@@ -4,40 +4,8 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 import math
-
-from types import SimpleNamespace
-config = SimpleNamespace(
-    train=SimpleNamespace(batch_size=128,
-                          ema_decay=0.999,
-                          num_iter=20,
-                          tmin=1e-3,
-                          tmax=1.0,
-                          lr=1e-4),
-    network=SimpleNamespace(
-        network_type='mlp',
-        n_hidden=3,
-        n_neurons=256,
-        d=2,
-    ),
-
-)
-
-
-
 from old_settings.common.interpolant import Interpolant
-interp = Interpolant(
-        alpha=lambda t: 1.0 - t,
-        beta=lambda t: t,
-        alpha_dot=lambda _: -1.0,
-        beta_dot=lambda _: 1.0,
-    )
-
-
-
 from old_settings.common.network_utils import setup_network
-mlp = setup_network(config.network)
-
-
 
 
 class FlowMap(nn.Module):
@@ -89,3 +57,22 @@ def initialize_network(
     num_params = sum(leaf.size for leaf in leaves)
     print(f"Number of parameters: {num_params}")
     return params, prng_key
+
+
+def sample(flow_map: FlowMap, params, x0, N, ts):
+    """Unconditional sampling returning the full trajectory."""
+
+    def step(x, idx):
+        x_new = flow_map.apply(params, ts[idx], ts[idx + 1], x, train=False)
+        return x_new, x_new
+
+    final_state, traj = jax.lax.scan(step, x0, jnp.arange(N))
+    traj = jnp.concatenate([x0[None, ...], traj], axis=0)
+    return final_state, traj
+
+@functools.partial(jax.jit, static_argnums=(0,3))
+@functools.partial(jax.vmap, in_axes=(None, None, 0, None, None))
+def batch_sample(flow_map, params, x0s, N, ts):
+    """Batch unconditional sampling returning the full trajectory."""
+    return sample(flow_map, params, x0s, N, ts)
+

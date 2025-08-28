@@ -212,22 +212,3 @@ class OTPlanSampler:
             to_return.append(X[:, t][indices[t]])
         to_return = np.stack(to_return, axis=1)
         return to_return
-
-
-def sample(flow_map: FlowMap, params, x0, N):
-    """Unconditional sampling returning the full trajectory."""
-    ts = jnp.linspace(config.train.tmin, config.train.tmax, N + 1)
-
-    def step(x, idx):
-        x_new = flow_map.apply(params, ts[idx], ts[idx + 1], x, train=False)
-        return x_new, x_new
-
-    final_state, traj = jax.lax.scan(step, x0, jnp.arange(N))
-    traj = jnp.concatenate([x0[None, ...], traj], axis=0)
-    return final_state, traj
-
-@functools.partial(jax.jit, static_argnums=(0, 3))
-@functools.partial(jax.vmap, in_axes=(None, None, 0, None))
-def batch_sample(flow_map, params, x0s, N):
-    """Batch unconditional sampling returning the full trajectory."""
-    return sample(flow_map, params, x0s, N)
