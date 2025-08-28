@@ -162,7 +162,6 @@ def main(argv):
 
             if k % 1000 == 0:
                 with torch.no_grad():
-                    with torch.no_grad():
                     x0_vis = sample_8gaussians(1024)
                     x0_vis_jax = jnp.array(x0_vis.numpy())
                     ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
