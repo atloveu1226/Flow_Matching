@@ -128,7 +128,7 @@ def main(argv):
             x0_eval = sample_8gaussians(metric_batch_size)
             x0_eval_jax = jnp.array(x0_eval.numpy())
             ts_eval = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
-            x1_eval, x1_traj = batch_sample(flowmap_net, params, x0_eval_jax, 10, ts_eval)
+            x1_eval, x1_traj = batch_sample(flowmap_net, params, x0_eval_jax, FLAGS.num_steps, ts_eval)
             x1_target = sample_moons(metric_batch_size)
 
             x0_eval_torch = torch.from_numpy(np.asarray(x0_eval_jax))
@@ -187,7 +187,7 @@ def main(argv):
                 x0_vis = sample_8gaussians(1024)
                 x0_vis_jax = jnp.array(x0_vis.numpy())
                 ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
-                x1_vis, x1_traj = batch_sample(flowmap_net, params, x0_vis_jax, 10, ts)
+                x1_vis, x1_traj = batch_sample(flowmap_net, params, x0_vis_jax, FLAGS.num_steps, ts)
                 x1_traj = jnp.permute_dims(x1_traj, (1, 0, 2))
                 n = min(2000, x1_traj.shape[1])
                 plt.figure(figsize=(6, 6))

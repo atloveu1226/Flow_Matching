@@ -2,12 +2,12 @@ import ml_collections
 
 def get_config():
     config = ml_collections.ConfigDict()
-    config.name = "lagrangian"
+    config.name = "eulerian"
     config.train = ml_collections.ConfigDict()
     config.train.batch_size = 128
     config.train.ema_decay = 0.999
     config.train.num_iter = 20
-    config.train.tmin = 1e-3
+    config.train.tmin = 0.0
     config.train.tmax = 1.0
     config.train.lr = 1e-4
     # logging / evaluation intervals
