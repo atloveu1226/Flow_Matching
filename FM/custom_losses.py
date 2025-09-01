@@ -28,15 +28,15 @@ def eulerian(
     X: FlowMap,
     interp: Interpolant
 ) -> float:
-    It = interp.calc_It(t, x0, x1)
+    Is = interp.calc_It(s, x0, x1)
     It_dot = interp.calc_It_dot(t, x0, x1)
-    Xst_It = X.apply(params, s, t, It, train=True)
+    Xst_Is = X.apply(params, s, t, Is, train=True)
     dt_Xts = X.apply(
-        params, t, s, Xst_It, train=True, method="partial_s"
+        params, t, s, Xst_Is, train=True, method="partial_s"
     )
     jvp = jax.jvp(
-        lambda x: X.apply(params, s, t, x, train=True,),
-        (It,),
+        lambda x: X.apply(params, s, t, x, train=True),
+        (Is,),
         (dt_Xts,),
     )[1]
 
