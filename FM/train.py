@@ -1,3 +1,4 @@
+import os
 import time
 import functools
 from tqdm import tqdm
@@ -13,6 +14,7 @@ from absl import app
 from absl import flags
 from absl import logging
 from ml_collections import config_flags
+from torch.utils.tensorboard import SummaryWriter
 
 from custom_fm import FlowMap, initialize_network, batch_sample
 from custom_losses import mean_reduce, eulerian, lagrangian
@@ -23,8 +25,6 @@ from old_settings.common.interpolant import Interpolant
 ##
 from metrics import wasserstein, NPE_batch
 from OT_sampler import OTPlanSampler
-from torch.utils.tensorboard import SummaryWriter
-import os
 
 #python FM/train.py --config=FM/custom_configs/esd.py --mode=train --device=cpu --num_steps=10
 
@@ -39,7 +39,7 @@ config_flags.DEFINE_config_file(
 )
 flags.DEFINE_string("mode", "train", "Mode to run in: train or sample.")
 flags.DEFINE_string("device", "cpu", "Device to run on: cpu or cuda or tpu.")
-flags.DEFINE_integer("num_steps", 100, "Number of steps for sampling.")
+flags.DEFINE_integer("num_steps", 1000, "Number of steps for sampling.")
 
 
 def main(argv):
@@ -100,160 +100,157 @@ def main(argv):
     shuffled_indices = jax.random.permutation(data_key, total_samples)
     shuffled_indices = jax.device_put(shuffled_indices, jax.devices(FLAGS.device)[0])
 
-    num_epochs = 5
     epoch_times = []
     epoch_w2 = []
     epoch_npe = []
 
-    for epoch in range(num_epochs):
+    global_step = 0
 
-        losses = []
-        grad_norms = []
-        start_time = time.time()
-        pbar = tqdm(range(num_iter), desc="Training", unit="iter")
+    # ------------------------------
+    # Training Loop
+    # ------------------------------
+    losses = []
+    grad_norms = []
+    start_time = time.time()
+    pbar = tqdm(range(num_iter), desc="Training", unit="iter")
 
-        #x0_epoch_samples = []
-        #x1_epoch_samples = []
+    writer = SummaryWriter()
+    os.makedirs("samples", exist_ok=True)
 
-        writer = SummaryWriter("runs/flow_matching")
-        os.makedirs("samples", exist_ok=True)
+    log_interval = getattr(config.train, "log_interval", 100)
+    sample_interval = getattr(config.train, "sample_interval", 1000)
+    eval_interval = getattr(config.train, "eval_interval", 1000)
+    metric_batch_size = getattr(config.train, "metric_batch_size", 1024)
 
-        for k in pbar:
-            start_index = k * batch_size
-            end_index = start_index + batch_size
-            batch_indices = shuffled_indices[start_index:end_index]
+    def evaluate(step: int):
+        """Compute metrics (w2, npe) and write images."""
+        with torch.no_grad():
+            x0_eval = sample_8gaussians(metric_batch_size)
+            x0_eval_jax = jnp.array(x0_eval.numpy())
+            ts_eval = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
+            x1_eval, x1_traj = batch_sample(flowmap_net, params, x0_eval_jax, 10, ts_eval)
+            x1_target = sample_moons(metric_batch_size)
 
-            x0batch = x0_full[batch_indices]
-            x1batch = x1_full[batch_indices]
+            x0_eval_torch = torch.from_numpy(np.asarray(x0_eval_jax))
+            x1_eval_torch = torch.from_numpy(np.asarray(x1_eval))
+            x1_target_torch = torch.from_numpy(np.asarray(x1_target))
 
+            wdist = wasserstein(x1_eval_torch, x1_target_torch, method="exact")
+            npe = NPE_batch(x0_eval_torch, x1_eval_torch, interp=interp, method="exact")
 
-            # Get sample from optimal transport
-            x0batch_torch = torch.from_numpy(np.array(x0batch))
-            x1batch_torch = torch.from_numpy(np.array(x1batch))
+            writer.add_scalar("metrics/W2", float(wdist), step)
+            writer.add_scalar("metrics/NPE", float(npe), step)
+            logging.info(f"[Eval {step}] W2: {float(wdist):.6f} | NPE: {float(npe):.6f}")
 
-            pair_sample = sampler.sample_plan(x0batch_torch, x1batch_torch)
+            return float(wdist), float(npe)
 
-            x0_pair = pair_sample[0]
-            x1_pair = pair_sample[1]
+    for k in pbar:
+        start_index = k * batch_size
+        end_index = start_index + batch_size
+        batch_indices = shuffled_indices[start_index:end_index]
 
-            x0_pair_jax = jax.device_put(jnp.array(x0_pair.numpy()), jax.devices(FLAGS.device)[0])
-            x1_pair_jax = jax.device_put(jnp.array(x1_pair.numpy()), jax.devices(FLAGS.device)[0])
+        x0batch = x0_full[batch_indices]
+        x1batch = x1_full[batch_indices]
 
+        # OT minibatch
+        x0batch_torch = torch.from_numpy(np.array(x0batch))
+        x1batch_torch = torch.from_numpy(np.array(x1batch))
+        pair_sample = sampler.sample_plan(x0batch_torch, x1batch_torch)
+        x0_pair, x1_pair = pair_sample
+        x0_pair_jax = jax.device_put(jnp.array(x0_pair.numpy()), jax.devices(FLAGS.device)[0])
+        x1_pair_jax = jax.device_put(jnp.array(x1_pair.numpy()), jax.devices(FLAGS.device)[0])
 
-            tkey, skey, x0key = jax.random.split(prng_key, num=3)
-            tbatch = jax.random.uniform(tkey, shape=(batch_size,), minval=tmin, maxval=tmax)
-            sbatch = jax.random.uniform(skey, shape=(batch_size,), minval=tmin, maxval=tmax)
+        # random times
+        prng_key, tkey, skey = jax.random.split(prng_key, num=3)
+        tbatch = jax.random.uniform(tkey, shape=(batch_size,), minval=tmin, maxval=tmax)
+        sbatch = jax.random.uniform(skey, shape=(batch_size,), minval=tmin, maxval=tmax)
 
+        # loss and update
+        loss_fn_args = (x0_pair_jax, x1_pair_jax, sbatch, tbatch)
+        params, opt_state, loss_value, grads = update(
+            params, opt_state, opt, curr_loss, loss_fn_args
+        )
 
-            loss_fn_args = (x0_pair_jax, x1_pair_jax, sbatch, tbatch)
-            params, opt_state, loss_value, grads = update(
-                params, opt_state, opt, curr_loss, loss_fn_args
-              )
+        # for logging
+        grad_norm = jnp.sqrt(sum(jnp.sum(jnp.square(g)) for g in jax.tree_util.tree_leaves(grads)))
+        losses.append(float(loss_value))
+        grad_norms.append(float(grad_norm))
 
-            grad_norm = jnp.sqrt(sum(jnp.sum(jnp.square(g)) for g in jax.tree_util.tree_leaves(grads)))
+        writer.add_scalar("loss", float(loss_value), global_step)
+        writer.add_scalar("grad_norm", float(grad_norm), global_step)
 
-            losses.append(float(loss_value))
-            grad_norms.append(float(grad_norm))
+        # if (global_step % log_interval) == 0:
+        #     logging.info(f"[Iter {global_step}] Loss: {float(loss_value):.6f} | GradNorm: {float(grad_norm):.6f}")
 
-            if k % 100 == 0:
-                print(f"[Iter {k}] Loss: {loss_value:.6f} | Grad Norm: {grad_norm:.6f}")
-                writer.add_scalar("Loss/train", float(loss_value), k)
-                writer.add_scalar("GradNorm/train", float(grad_norm), k)
+        if (global_step % sample_interval) == 0:
+            with torch.no_grad():
+                x0_vis = sample_8gaussians(1024)
+                x0_vis_jax = jnp.array(x0_vis.numpy())
+                ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
+                x1_vis, x1_traj = batch_sample(flowmap_net, params, x0_vis_jax, 10, ts)
+                x1_traj = jnp.permute_dims(x1_traj, (1, 0, 2))
+                n = min(2000, x1_traj.shape[1])
+                plt.figure(figsize=(6, 6))
+                plt.scatter(x1_traj[0, :n, 0], x1_traj[0, :n, 1], s=10, alpha=0.8, c="black")
+                plt.scatter(x1_traj[:, :n, 0], x1_traj[:, :n, 1], s=0.2, alpha=0.2, c="olive")
+                plt.scatter(x1_traj[-1, :n, 0], x1_traj[-1, :n, 1], s=4, alpha=1, c="blue")
+                plt.legend(["Prior sample z(S)", "Flow", "z(0)"])
+                plt.xticks([])
+                plt.yticks([])
+                out_path = f"samples/step_{global_step}.png"
+                plt.savefig(out_path)
+                plt.close()
+                writer.add_image(
+                    "samples",
+                    plt.imread(out_path),
+                    global_step,
+                    dataformats="HWC"
+                )
 
-            if k % 1000 == 0:
-                with torch.no_grad():
-                    x0_vis = sample_8gaussians(1024)
-                    x0_vis_jax = jnp.array(x0_vis.numpy())
-                    ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
-                    x1_vis, traj = batch_sample(flowmap_net, params, x0_vis_jax, 10, ts)
-    
-                    n = 2000
-                    plt.figure(figsize=(6, 6))
-                    plt.scatter(traj[0, :n, 0], traj[0, :n, 1], s=10, alpha=0.8, c="black")
-                    plt.scatter(traj[:, :n, 0], traj[:, :n, 1], s=0.2, alpha=0.2, c="olive")
-                    plt.scatter(traj[-1, :n, 0], traj[-1, :n, 1], s=4, alpha=1, c="blue")
-                    plt.legend(["Prior sample z(S)", "Flow", "z(0)"])
-                    plt.xticks([])
-                    plt.yticks([])
-                    plt.savefig(f"samples/step_{k}.png")
+        if (global_step % eval_interval) == 0:
+            w2_val, npe_val = evaluate(global_step)
+            epoch_w2.append(w2_val)
+            epoch_npe.append(npe_val)
 
-                    writer.add_image(
-                        "Samples",
-                        plt.imread(f"samples/step_{k}.png"),
-                        k,
-                        dataformats="HWC"
-                    )
+        pbar.set_postfix({
+            'Loss': f'{float(loss_value):.6f}',
+            'GradNorm': f'{float(grad_norm):.6f}'
+        })
 
+        global_step += 1
+    pbar.close()
+    writer.close()
 
-            pbar.update(1)
-            pbar.set_postfix({
-                'Loss': f'{loss_value:.6f}',
-                'Grad Norm': f'{grad_norm:.6f}'
+    # final evaluation
+    if (global_step - 1) % eval_interval != 0:
+        w2_val, npe_val = evaluate(global_step - 1)
+        epoch_w2.append(w2_val)
+        epoch_npe.append(npe_val)
 
-            })
-        pbar.close()
-        writer.close()
-        
-        #Compute w2
-        x0s = sample_8gaussians(1024)
-        x0s_plt = jnp.array(x0s.numpy())
-        ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
-        x1s_plt, x1s_plt_traj = batch_sample(flowmap_net, params, x0s_plt, 10, ts)
-        #logging.info(x1s_plt.shape, x1s_plt_traj.shape)
-
-        x1s_plt_traj = jnp.permute_dims(x1s_plt_traj, (1, 0, 2))
-        #logging.info(x1s_plt_traj.shape)
-
-        x1_target = sample_moons(1024)
-
-        x0s_plt_torch = torch.from_numpy(np.asarray(x0s_plt))
-        x1s_plt_torch = torch.from_numpy(np.asarray(x1s_plt))
-        x1_target_torch = torch.from_numpy(np.asarray(x1_target))
-
-        wdist = wasserstein(x1s_plt_torch, x1_target_torch, method = 'exact')
-
-        #Compute NPE
-        npe = NPE_batch(x0s_plt_torch, x1s_plt_torch, interp=interp, method="exact")
-
-        #Update
-        epoch_w2.append(float(wdist))
-        epoch_npe.append(float(npe))
-
-        end_time = time.time()
-        elapsed = end_time - start_time
-        epoch_times.append(elapsed)
-        logging.info(f"Epoch {epoch + 1} consume: {elapsed:.2f} seconds")
-
-        mean_w2 = np.mean(epoch_w2)
-        std_w2 = np.std(epoch_w2)
-
-        mean_npe = np.mean(epoch_npe)
-        std_npe = np.std(epoch_npe)
-
-        mean_time = np.mean(epoch_times)
-        std_time = np.std(epoch_times)
-
-        logging.info(f"\n the mean of each epoch spends: {mean_time:.2f}, std: {std_time:.2f}")
-
-        logging.info(f"\n the mean w2 of each epoch is: {mean_w2:.2f}, std: {std_w2:.2f}")
-
-        logging.info(f"\n the mean npe of each epoch is: {mean_npe:.2f}, std: {std_npe:.2f}")
+    end_time = time.time()
+    elapsed = end_time - start_time
+    epoch_times.append(elapsed)
+    mean_w2 = np.mean(epoch_w2) if epoch_w2 else float('nan')
+    std_w2 = np.std(epoch_w2) if epoch_w2 else float('nan')
+    mean_npe = np.mean(epoch_npe) if epoch_npe else float('nan')
+    std_npe = np.std(epoch_npe) if epoch_npe else float('nan')
+    logging.info(f"Training finished in {elapsed:.2f}s | mean W2 {mean_w2:.4f}±{std_w2:.4f} | mean NPE {mean_npe:.4f}±{std_npe:.4f}")
 
     # final plotting
-    plot_trajectories(x1s_plt_traj)
-    plt.plot(losses)
-    plt.xlabel('Iteration')
-    plt.ylabel('Loss ')
-    plt.title('Loss_'+config.name+' vs Iteration')
+    # plot_trajectories(x1s_plt_traj)
+    # plt.plot(losses)
+    # plt.xlabel('Iteration')
+    # plt.ylabel('Loss ')
+    # plt.title('Loss_'+config.name+' vs Iteration')
     #plt.savefig("/Users/alan/Desktop/Image/Lagrangian_losses.png")
-    plt.show()
+    # plt.show()
 
-    plt.plot(grad_norms)
-    plt.xlabel('Iteration')
-    plt.ylabel('Gradient Norm')
-    plt.title('Gradient Norm_'+config.name+' vs Iteration')
+    # plt.plot(grad_norms)
+    # plt.xlabel('Iteration')
+    # plt.ylabel('Gradient Norm')
+    # plt.title('Gradient Norm_'+config.name+' vs Iteration')
     #plt.savefig("/Users/alan/Desktop/Image/Lagrangian_grad.png")
-    plt.show()
+    # plt.show()
 
 
 

@@ -10,6 +10,11 @@ def get_config():
     config.train.tmin = 1e-3
     config.train.tmax = 1.0
     config.train.lr = 1e-4
+    # logging / evaluation intervals
+    # config.train.log_interval = 100
+    config.train.sample_interval = 500
+    config.train.eval_interval = 500
+    config.train.metric_batch_size = 1024
 
     config.network = ml_collections.ConfigDict()
     config.network.network_type = 'mlp'
