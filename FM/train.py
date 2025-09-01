@@ -120,16 +120,16 @@ def main(argv):
     log_interval = getattr(config.train, "log_interval", 100)
     sample_interval = getattr(config.train, "sample_interval", 1000)
     eval_interval = getattr(config.train, "eval_interval", 1000)
-    metric_batch_size = getattr(config.train, "metric_batch_size", 1024)
+    eval_bs = getattr(config.train, "eval_bs", 1024)
 
     def evaluate(step: int):
         """Compute metrics (w2, npe) and write images."""
         with torch.no_grad():
-            x0_eval = sample_8gaussians(metric_batch_size)
+            x0_eval = sample_8gaussians(eval_bs)
             x0_eval_jax = jnp.array(x0_eval.numpy())
             ts_eval = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
             x1_eval, x1_traj = batch_sample(flowmap_net, params, x0_eval_jax, FLAGS.num_steps, ts_eval)
-            x1_target = sample_moons(metric_batch_size)
+            x1_target = sample_moons(eval_bs)
 
             x0_eval_torch = torch.from_numpy(np.asarray(x0_eval_jax))
             x1_eval_torch = torch.from_numpy(np.asarray(x1_eval))

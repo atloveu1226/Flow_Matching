@@ -50,7 +50,7 @@ def NPE_batch(x0: torch.Tensor, x1: torch.Tensor, interp: Interpolant, method="e
 
     PE = torch.sum(It_dot**2, dim=-1).mean()
 
-    w2 = torch.tensor(wasserstein(x0, x1, method = method), device=x0.device)
+    w2 = torch.tensor(wasserstein(x0, x1, method = method), device=x0.device)**2
 
     npe = torch.abs(PE - w2) / w2
 
