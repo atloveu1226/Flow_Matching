@@ -129,6 +129,7 @@ def main(argv):
             x0_eval_jax = jnp.array(x0_eval.numpy())
             ts_eval = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
             x1_eval, x1_traj = batch_sample(flowmap_net, params, x0_eval_jax, FLAGS.num_steps, ts_eval)
+            x1_eval_jax = jnp.array(x1_eval.numpy())
             x1_target = sample_moons(eval_bs)
 
             x0_eval_torch = torch.from_numpy(np.asarray(x0_eval_jax))
