@@ -70,7 +70,7 @@ def NPE_batch(param, x0, x1, interp, X, method="exact", key=jax.random.PRNGKey(0
     PE = jnp.sum(ds_Xs1**2, axis=-1).mean()
 
     # wasserstein term (make sure `wasserstein` can handle jnp)
-    w2 = jnp.square(wasserstein(x0, x1, method=method))
+    w2 = jnp.array(wasserstein(x0, x1, method=method)) ** 2
 
     # final npe
     npe = jnp.abs(PE - w2) / w2
