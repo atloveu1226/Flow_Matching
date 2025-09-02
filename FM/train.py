@@ -122,7 +122,7 @@ def main(argv):
     eval_interval = getattr(config.train, "eval_interval", 1000)
     eval_bs = getattr(config.train, "eval_bs", 1024)
 
-    def evaluate(step: int):
+    def evaluate(step: int, params):
         """Compute metrics (w2, npe) and write images."""
         with torch.no_grad():
             x0_eval = sample_8gaussians(eval_bs)
@@ -136,7 +136,7 @@ def main(argv):
             x1_target_torch = torch.from_numpy(np.asarray(x1_target))
 
             wdist = wasserstein(x1_eval_torch, x1_target_torch, method="exact")
-            npe = NPE_batch(x0_eval_torch, x1_eval_torch, interp=interp, method="exact")
+            npe = NPE_batch(params, x0_eval_torch, x1_eval_torch, interp=interp, X=flowmap_net, method="exact")
 
             writer.add_scalar("metrics/W2", float(wdist), step)
             writer.add_scalar("metrics/NPE", float(npe), step)
@@ -208,7 +208,7 @@ def main(argv):
                 )
 
         if (global_step % eval_interval) == 0:
-            w2_val, npe_val = evaluate(global_step)
+            w2_val, npe_val = evaluate(global_step, params)
             epoch_w2.append(w2_val)
             epoch_npe.append(npe_val)
 
