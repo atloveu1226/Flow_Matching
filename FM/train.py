@@ -136,7 +136,7 @@ def main(argv):
             x1_target_torch = torch.from_numpy(np.asarray(x1_target))
 
             wdist = wasserstein(x1_eval_torch, x1_target_torch, method="exact")
-            npe = NPE_batch(params, x0_eval_torch, x1_eval_torch, interp=interp, X=flowmap_net, method="exact")
+            npe = NPE_batch(params, x0_eval_jax, x1_eval_jax, interp=interp, X=flowmap_net, method="exact")
 
             writer.add_scalar("metrics/W2", float(wdist), step)
             writer.add_scalar("metrics/NPE", float(npe), step)
