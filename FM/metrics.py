@@ -45,6 +45,9 @@ def wasserstein(
 def NPE_batch(param, x0: torch.Tensor, x1: torch.Tensor, interp: Interpolant, X, method="exact"):
 
     N, D = x0.shape
+
+    x0 = jnp.array(x0.numpy())
+    x1 = jnp.array(x1.numpy())
     s = torch.rand(N, 1, device=x0.device, dtype=x0.dtype)  # shape (N,1)
     s = jnp.array(s.numpy())
 
