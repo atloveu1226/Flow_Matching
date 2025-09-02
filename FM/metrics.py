@@ -42,25 +42,37 @@ def wasserstein(
 
 
 
-def NPE_batch(param, x0: torch.Tensor, x1: torch.Tensor, interp: Interpolant, X, method="exact"):
+def NPE_batch(param, x0, x1, interp, X, method="exact", key=jax.random.PRNGKey(0)):
+    """
+    JAX version of NPE_batch
+    param: model parameters
+    x0, x1: jnp.ndarray of shape (N, D)
+    interp: Interpolant object with calc_It
+    X: model with .apply()
+    method: wasserstein method
+    key: jax random key
+    """
 
     N, D = x0.shape
 
-    x0 = jnp.array(x0.numpy())
-    x1 = jnp.array(x1.numpy())
-    s = torch.rand(N, 1, device=x0.device, dtype=x0.dtype)  # shape (N,1)
-    s = jnp.array(s.numpy())
+    # sample s ~ Uniform(0,1)
+    key, subkey = jax.random.split(key)
+    s = jax.random.uniform(subkey, (N, 1), dtype=x0.dtype)
 
-    Is = interp.calc_It(s, x0, x1)  # shape (N,)
+    # compute interpolant
+    Is = interp.calc_It(s, x0, x1)   # shape (N,)
 
-    X1s = X.apply(param,1.0, s, Is)
-    ds_Xs1 = X.apply(param, s, 1.0, X1s, method='partial_s')
-    ds_Xs1 = torch.from_numpy(np.asarray(ds_Xs1))
+    # forward pass
+    X1s = X.apply(param, 1.0, s, Is)
+    ds_Xs1 = X.apply(param, s, 1.0, X1s, method="partial_s")
 
-    PE = torch.sum(ds_Xs1**2, dim=-1).mean()
+    # PE term
+    PE = jnp.sum(ds_Xs1**2, axis=-1).mean()
 
-    w2 = torch.tensor(wasserstein(x0, x1, method = method), device=x0.device)**2
+    # wasserstein term (make sure `wasserstein` can handle jnp)
+    w2 = jnp.square(wasserstein(x0, x1, method=method))
 
-    npe = torch.abs(PE - w2) / w2
+    # final npe
+    npe = jnp.abs(PE - w2) / w2
 
     return npe
