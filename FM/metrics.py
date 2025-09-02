@@ -63,10 +63,11 @@ def NPE_batch(param, x0, x1, interp, X, method="exact", key=jax.random.PRNGKey(0
 
     # compute interpolant
     Is = interp.calc_It(s, x0, x1)
+    t = jnp.ones((N,1))
 
     # forward pass
-    X1s = X.apply(param, 1.0, s, Is)
-    ds_Xs1 = X.apply(param, s, 1.0, X1s, method="partial_s")
+    X1s = X.apply(param, t, s, Is)
+    ds_Xs1 = X.apply(param, s, t, X1s, method="partial_s")
 
     # PE term
     PE = jnp.mean(jnp.sum(ds_Xs1**2, axis=-1))
