@@ -3,6 +3,7 @@ from functools import partial
 
 import torch
 import ot as pot
+import jax.numpy as jnp
 
 from old_settings.common.interpolant import Interpolant
 
