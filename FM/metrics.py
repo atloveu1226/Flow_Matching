@@ -41,14 +41,19 @@ def wasserstein(
 
 
 
-def NPE_batch(x0: torch.Tensor, x1: torch.Tensor, interp: Interpolant, method="exact"):
+def NPE_batch(param, x0: torch.Tensor, x1: torch.Tensor, interp: Interpolant, X, method="exact"):
 
     N, D = x0.shape
-    t = torch.rand(N, 1, device=x0.device, dtype=x0.dtype)  # shape (N,1)
+    s = torch.rand(N, 1, device=x0.device, dtype=x0.dtype)  # shape (N,1)
+    s = jnp.array(s.numpy())
 
-    It_dot = interp.calc_It_dot(t, x0, x1)  # shape (N,)
+    Is = interp.calc_It(s, x0, x1)  # shape (N,)
 
-    PE = torch.sum(It_dot**2, dim=-1).mean()
+    X1s = X.apply(param,1.0, s, Is)
+    ds_Xs1 = X.apply(param, s, 1.0, X1s, method='partial_s')
+    ds_Xs1 = torch.from_numpy(np.asarray(ds_Xs1))
+
+    PE = torch.sum(ds_Xs1**2, dim=-1).mean()
 
     w2 = torch.tensor(wasserstein(x0, x1, method = method), device=x0.device)**2
 
