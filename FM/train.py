@@ -132,9 +132,10 @@ def main(argv):
             x1_eval_jax = x1_eval
             x1_target = sample_moons(eval_bs)
 
-            x0_eval_torch = torch.from_numpy(np.asarray(x0_eval_jax))
-            x1_eval_torch = torch.from_numpy(np.asarray(x1_eval))
-            x1_target_torch = torch.from_numpy(np.asarray(x1_target))
+            # x0_eval_torch = torch.tensor(np.asarray(x0_eval_jax), copy=True)
+            # Ensure writable memory by copying (avoids PyTorch non-writable NumPy warning)
+            x1_eval_torch = torch.tensor(np.asarray(x1_eval))
+            x1_target_torch = torch.tensor(np.asarray(x1_target))
 
             wdist = wasserstein(x1_eval_torch, x1_target_torch, method="exact")
             npe = NPE_batch(params, x0_eval_jax, x1_eval_jax, interp=interp, X=flowmap_net, method="exact")
@@ -153,9 +154,9 @@ def main(argv):
         x0batch = x0_full[batch_indices]
         x1batch = x1_full[batch_indices]
 
-        # OT minibatch
-        x0batch_torch = torch.from_numpy(np.array(x0batch))
-        x1batch_torch = torch.from_numpy(np.array(x1batch))
+        # OT minibatch (copy to ensure writable tensors)
+        x0batch_torch = torch.tensor(np.array(x0batch))
+        x1batch_torch = torch.tensor(np.array(x1batch))
         pair_sample = sampler.sample_plan(x0batch_torch, x1batch_torch)
         x0_pair, x1_pair = pair_sample
         x0_pair_jax = jax.device_put(jnp.array(x0_pair.numpy()), jax.devices(FLAGS.device)[0])
@@ -224,7 +225,7 @@ def main(argv):
 
     # final evaluation
     if (global_step - 1) % eval_interval != 0:
-        w2_val, npe_val = evaluate(global_step - 1)
+        w2_val, npe_val = evaluate(global_step - 1, params)
         epoch_w2.append(w2_val)
         epoch_npe.append(npe_val)
 

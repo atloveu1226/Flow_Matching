@@ -2,6 +2,7 @@ import math
 from functools import partial
 
 import torch
+import numpy as np
 import ot as pot
 import jax.numpy as jnp
 import jax
@@ -55,19 +56,24 @@ def NPE_batch(param, x0, x1, interp, X, method="exact", key=jax.random.PRNGKey(0
         method: wasserstein method.
         key: jax random key.
     """
+    # PE = E_{x(0)\sim q(x0)} [\int_0^1 ||v_\theta(t,x(t))||^2 dt]
     N, D = x0.shape
-
-    # sample s ~ Uniform(0,1)
+    
     key, subkey = jax.random.split(key)
-    s = jax.random.uniform(subkey, (N, 1), dtype=x0.dtype)
+    # sample s ~ Uniform(0,1)
+    s = jax.random.uniform(subkey, (N, ), dtype=x0.dtype)
+    t = jnp.ones((N,))
+    @partial(jax.vmap, in_axes=(None, 0, 0, 0, 0))
+    def compute_ds_Xs1(param, x0, x1, s, t):
+        # compute interpolant
+        Is = interp.calc_It(s, x0, x1)
 
-    # compute interpolant
-    Is = interp.calc_It(s, x0, x1)
-    t = jnp.ones((N,1))
-
-    # forward pass
-    X1s = X.apply(param, t, s, Is)
-    ds_Xs1 = X.apply(param, s, t, X1s, method="partial_s")
+        # forward pass
+        X1s = X.apply(param, t, s, Is)
+        ds_Xs1 = X.apply(param, s, t, X1s, method="partial_s")
+        return ds_Xs1
+    
+    ds_Xs1 = compute_ds_Xs1(param, x0, x1, s, t)
 
     # PE term
     PE = jnp.mean(jnp.sum(ds_Xs1**2, axis=-1))
