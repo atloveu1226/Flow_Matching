@@ -199,7 +199,7 @@ def main(argv):
                 plt.legend(["Prior sample z(S)", "Flow", "z(0)"])
                 plt.xticks([])
                 plt.yticks([])
-                out_path = f"samples/num_iter_{config.train.num_iter}/batch_size_{config.train.batch_size}/step_{global_step}.png"
+                out_path = f"samples/{config.name}num_iter_{config.train.num_iter}/batch_size_{config.train.batch_size}/step_{global_step}.png"
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 plt.savefig(out_path)
                 plt.close()
