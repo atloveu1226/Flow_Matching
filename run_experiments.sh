@@ -2,6 +2,7 @@
 
 # Bash script to run experiments with different configs, num_steps, and batch_sizes
 # Usage: ./run_experiments.sh
+export KMP_DUPLICATE_LIB_OK=TRUE
 
 CONFIGS=(
     "FM/custom_configs/esd.py"
@@ -9,8 +10,8 @@ CONFIGS=(
     # "FM/custom_configs/other_config.py"
 )
 
-NUM_STEPS_LIST=(10 50 100)
-BATCH_SIZE_LIST=(32 64 128)
+NUM_STEPS_LIST=(2500 5000 10000)
+BATCH_SIZE_LIST=(64 128 256)
 
 for CONFIG in "${CONFIGS[@]}"; do
     for NUM_STEPS in "${NUM_STEPS_LIST[@]}"; do
@@ -21,7 +22,7 @@ for CONFIG in "${CONFIGS[@]}"; do
             echo "  Num steps:   $NUM_STEPS"
             echo "  Batch size:  $BATCH_SIZE"
             echo "----------------------------------------"
-            python FM/train.py \
+            python /Users/alan/PyCharmMiscProject/Flow_Matching/FM/train.py \
                 --config="$CONFIG" \
                 --mode=train \
                 --device=cpu \
