@@ -9,7 +9,7 @@ import optax
 import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
-from torchcfm.utils import sample_8gaussians, sample_moons, plot_trajectories
+from gaussian_and_moon import sample_8gaussians, sample_moons
 from absl import app
 from absl import flags
 from absl import logging
@@ -63,14 +63,16 @@ def main(argv):
     batch_size = config.train.batch_size
     total_samples = num_iter * batch_size
 
+    prng_key = jax.random.PRNGKey(42)
+
     #x0_full_torch = sample_8gaussians(total_samples)
-    x0_full_torch = sample_moons(total_samples)
+    x0_full = sample_moons(prng_key, total_samples)
     #x1_full_torch = sample_moons(total_samples)
-    x1_full_torch = sample_8gaussians(total_samples)
+    x1_full= sample_8gaussians(prng_key,total_samples)
 
     # create progress bar
-    prng_key = jax.random.PRNGKey(42)
-    params, prng_key = initialize_network(flowmap_net, jnp.array(sample_moons(1).numpy()[0]), prng_key)
+
+    params, prng_key = initialize_network(flowmap_net, sample_moons(prng_key, 1)[0], prng_key)
     params = jax.device_put(params, jax.devices(FLAGS.device)[0])
 
     # optimizer
@@ -94,8 +96,8 @@ def main(argv):
 
     sampler = OTPlanSampler(method="exact")
 
-    x0_full = jax.device_put(jnp.array(x0_full_torch.numpy()), jax.devices(FLAGS.device)[0])
-    x1_full = jax.device_put(jnp.array(x1_full_torch.numpy()), jax.devices(FLAGS.device)[0])
+    #x0_full = jax.device_put(jnp.array(x0_full_torch.numpy()), jax.devices(FLAGS.device)[0])
+    #x1_full = jax.device_put(jnp.array(x1_full_torch.numpy()), jax.devices(FLAGS.device)[0])
     logging.info(f"Data moved to {FLAGS.device}.")
     data_key = jax.random.PRNGKey(0)
     data_key, _ = jax.random.split(data_key)
@@ -125,16 +127,16 @@ def main(argv):
     eval_interval = getattr(config.train, "eval_interval", 1000)
     eval_bs = getattr(config.train, "eval_bs", 1024)
 
-    def evaluate(step: int, params):
+    def evaluate(step: int, params, key):
         """Compute metrics (w2, npe) and write images."""
         with torch.no_grad():
             #x0_eval = sample_8gaussians(eval_bs)
-            x0_eval = sample_moons(eval_bs)
-            x0_eval_jax = jnp.array(x0_eval.numpy())
+            x0_eval_jax = sample_moons(key, eval_bs)
+            #x0_eval_jax = jnp.array(x0_eval.numpy())
             ts_eval = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
             x1_eval, x1_traj = batch_sample(flowmap_net, params, x0_eval_jax, FLAGS.num_steps, ts_eval)
             x1_eval_jax = x1_eval
-            x1_target = sample_8gaussians(eval_bs)
+            x1_target = sample_8gaussians(key, eval_bs)
             #x1_target = sample_moons(eval_bs)
 
             # x0_eval_torch = torch.tensor(np.asarray(x0_eval_jax), copy=True)
@@ -192,8 +194,8 @@ def main(argv):
         if (global_step % sample_interval) == 0:
             with torch.no_grad():
                 #x0_vis = sample_8gaussians(1024)
-                x0_vis = sample_moons(1024)
-                x0_vis_jax = jnp.array(x0_vis.numpy())
+                x0_vis_jax = sample_moons(prng_key, 1024)
+                #x0_vis_jax = jnp.array(x0_vis.numpy())
                 ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
                 x1_vis, x1_traj = batch_sample(flowmap_net, params, x0_vis_jax, FLAGS.num_steps, ts)
                 x1_traj = jnp.permute_dims(x1_traj, (1, 0, 2))
@@ -217,7 +219,7 @@ def main(argv):
                 )
 
         if (global_step % eval_interval) == 0:
-            w2_val, npe_val = evaluate(global_step, params)
+            w2_val, npe_val = evaluate(global_step, params, prng_key)
             epoch_w2.append(w2_val)
             epoch_npe.append(npe_val)
 
@@ -232,7 +234,7 @@ def main(argv):
 
     # final evaluation
     if (global_step - 1) % eval_interval != 0:
-        w2_val, npe_val = evaluate(global_step - 1, params)
+        w2_val, npe_val = evaluate(global_step - 1, params, prng_key)
         epoch_w2.append(w2_val)
         epoch_npe.append(npe_val)
 
