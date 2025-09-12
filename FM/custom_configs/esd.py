@@ -12,7 +12,7 @@ def get_config():
     config.train.lr = 1e-4
     # logging / evaluation intervals
     # config.train.log_interval = 100
-    config.train.sample_interval = 500
+    config.train.sample_interval = 50
     config.train.eval_interval = 500
     config.train.eval_bs = 1024
 

@@ -63,12 +63,14 @@ def main(argv):
     batch_size = config.train.batch_size
     total_samples = num_iter * batch_size
 
-    x0_full_torch = sample_8gaussians(total_samples)
-    x1_full_torch = sample_moons(total_samples)
+    #x0_full_torch = sample_8gaussians(total_samples)
+    x0_full_torch = sample_moons(total_samples)
+    #x1_full_torch = sample_moons(total_samples)
+    x1_full_torch = sample_8gaussians(total_samples)
 
     # create progress bar
     prng_key = jax.random.PRNGKey(42)
-    params, prng_key = initialize_network(flowmap_net, jnp.array(sample_8gaussians(1).numpy()[0]), prng_key)
+    params, prng_key = initialize_network(flowmap_net, jnp.array(sample_moons(1).numpy()[0]), prng_key)
     params = jax.device_put(params, jax.devices(FLAGS.device)[0])
 
     # optimizer
@@ -114,7 +116,8 @@ def main(argv):
     start_time = time.time()
     pbar = tqdm(range(num_iter), desc="Training", unit="iter")
 
-    writer = SummaryWriter()
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    writer = SummaryWriter(log_dir=f"runs/exp_{timestamp}")
     os.makedirs("../samples", exist_ok=True)
 
     log_interval = getattr(config.train, "log_interval", 100)
@@ -125,12 +128,14 @@ def main(argv):
     def evaluate(step: int, params):
         """Compute metrics (w2, npe) and write images."""
         with torch.no_grad():
-            x0_eval = sample_8gaussians(eval_bs)
+            #x0_eval = sample_8gaussians(eval_bs)
+            x0_eval = sample_moons(eval_bs)
             x0_eval_jax = jnp.array(x0_eval.numpy())
             ts_eval = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
             x1_eval, x1_traj = batch_sample(flowmap_net, params, x0_eval_jax, FLAGS.num_steps, ts_eval)
             x1_eval_jax = x1_eval
-            x1_target = sample_moons(eval_bs)
+            x1_target = sample_8gaussians(eval_bs)
+            #x1_target = sample_moons(eval_bs)
 
             # x0_eval_torch = torch.tensor(np.asarray(x0_eval_jax), copy=True)
             # Ensure writable memory by copying (avoids PyTorch non-writable NumPy warning)
@@ -186,7 +191,8 @@ def main(argv):
 
         if (global_step % sample_interval) == 0:
             with torch.no_grad():
-                x0_vis = sample_8gaussians(1024)
+                #x0_vis = sample_8gaussians(1024)
+                x0_vis = sample_moons(1024)
                 x0_vis_jax = jnp.array(x0_vis.numpy())
                 ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
                 x1_vis, x1_traj = batch_sample(flowmap_net, params, x0_vis_jax, FLAGS.num_steps, ts)
@@ -199,7 +205,7 @@ def main(argv):
                 plt.legend(["Prior sample z(S)", "Flow", "z(0)"])
                 plt.xticks([])
                 plt.yticks([])
-                out_path = f"../samples/{config.name}num_iter_{config.train.num_iter}/batch_size_{config.train.batch_size}/step_{global_step}.png"
+                out_path = f"../samples/exp_{timestamp}/{config.name}/num_iter_{config.train.num_iter}/batch_size_{config.train.batch_size}/step_{global_step}.png"
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 plt.savefig(out_path)
                 plt.close()
@@ -237,7 +243,7 @@ def main(argv):
     std_w2 = np.std(epoch_w2) if epoch_w2 else float('nan')
     mean_npe = np.mean(epoch_npe) if epoch_npe else float('nan')
     std_npe = np.std(epoch_npe) if epoch_npe else float('nan')
-    logging.info(f"Training finished in {elapsed:.2f}s | mean W2 {mean_w2:.4f}±{std_w2:.4f} | mean NPE {mean_npe:.4f}±{std_npe:.4f}")
+    logging.info(f"Training finished in {elapsed:.2f}s")
 
     # final plotting
     # plot_trajectories(x1s_plt_traj)

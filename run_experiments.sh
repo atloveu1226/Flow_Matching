@@ -10,8 +10,8 @@ CONFIGS=(
     # "FM/custom_configs/other_config.py"
 )
 
-NUM_STEPS_LIST=(2500 5000 10000)
-BATCH_SIZE_LIST=(64 128 256)
+NUM_STEPS_LIST=(20000)
+BATCH_SIZE_LIST=(256)
 
 for CONFIG in "${CONFIGS[@]}"; do
     for NUM_STEPS in "${NUM_STEPS_LIST[@]}"; do
@@ -26,8 +26,9 @@ for CONFIG in "${CONFIGS[@]}"; do
                 --config="$CONFIG" \
                 --mode=train \
                 --device=cpu \
-                --num_steps="$NUM_STEPS" \
-                --config.train.batch_size="$BATCH_SIZE"
+                --config.train.num_iter="$NUM_STEPS" \
+                --config.train.batch_size="$BATCH_SIZE"\
+                --num_steps=10
             STATUS=$?
             if [ $STATUS -eq 0 ]; then
                 echo "Finished successfully."
