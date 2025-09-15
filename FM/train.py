@@ -25,6 +25,7 @@ from old_settings.common.interpolant import Interpolant
 ##
 from metrics import wasserstein, NPE_batch
 from OT_sampler import OTPlanSampler
+import pandas as pd
 
 #python FM/train.py --config=FM/custom_configs/esd.py --mode=train --device=cpu --num_steps=10
 
@@ -41,6 +42,9 @@ flags.DEFINE_string("mode", "train", "Mode to run in: train or sample.")
 flags.DEFINE_string("device", "cpu", "Device to run on: cpu or cuda or tpu.")
 flags.DEFINE_integer("num_steps", 1000, "Number of steps for sampling.")
 
+global_times = []
+global_w2 = []
+global_npe = []
 
 def main(argv):
     config = FLAGS.config
@@ -63,7 +67,7 @@ def main(argv):
     batch_size = config.train.batch_size
     total_samples = num_iter * batch_size
 
-    prng_key = jax.random.PRNGKey(42)
+    prng_key = jax.random.PRNGKey(config.train.key)
 
     #x0_full_torch = sample_8gaussians(total_samples)
     x0_full = sample_moons(prng_key, total_samples)
@@ -104,9 +108,7 @@ def main(argv):
     shuffled_indices = jax.random.permutation(data_key, total_samples)
     shuffled_indices = jax.device_put(shuffled_indices, jax.devices(FLAGS.device)[0])
 
-    epoch_times = []
-    epoch_w2 = []
-    epoch_npe = []
+
 
     global_step = 0
 
@@ -119,7 +121,7 @@ def main(argv):
     pbar = tqdm(range(num_iter), desc="Training", unit="iter")
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    writer = SummaryWriter(log_dir=f"runs/exp_{timestamp}")
+    writer = SummaryWriter(log_dir=f"runs/exp_{timestamp}_key:{config.train.key}")
     os.makedirs("../samples", exist_ok=True)
 
     log_interval = getattr(config.train, "log_interval", 100)
@@ -152,6 +154,8 @@ def main(argv):
             logging.info(f"[Eval {step}] W2: {float(wdist):.6f} | NPE: {float(npe):.6f}")
 
             return float(wdist), float(npe)
+    epoch_w2 = []
+    epoch_npe = []
 
     for k in pbar:
         start_index = k * batch_size
@@ -207,7 +211,7 @@ def main(argv):
                 plt.legend(["Prior sample z(S)", "Flow", "z(0)"])
                 plt.xticks([])
                 plt.yticks([])
-                out_path = f"../samples/exp_{timestamp}/{config.name}/num_iter_{config.train.num_iter}/batch_size_{config.train.batch_size}/step_{global_step}.png"
+                out_path = f"../samples/{config.name}/exp_{timestamp}/num_iter_{config.train.num_iter}/batch_size_{config.train.batch_size}/step_{global_step}.png"
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 plt.savefig(out_path)
                 plt.close()
@@ -223,6 +227,7 @@ def main(argv):
             epoch_w2.append(w2_val)
             epoch_npe.append(npe_val)
 
+
         pbar.set_postfix({
             'Loss': f'{float(loss_value):.6f}',
             'GradNorm': f'{float(grad_norm):.6f}'
@@ -235,34 +240,42 @@ def main(argv):
     # final evaluation
     if (global_step - 1) % eval_interval != 0:
         w2_val, npe_val = evaluate(global_step - 1, params, prng_key)
-        epoch_w2.append(w2_val)
-        epoch_npe.append(npe_val)
+        global_w2.append(w2_val)
+        global_npe.append(npe_val)
 
     end_time = time.time()
     elapsed = end_time - start_time
-    epoch_times.append(elapsed)
-    mean_w2 = np.mean(epoch_w2) if epoch_w2 else float('nan')
-    std_w2 = np.std(epoch_w2) if epoch_w2 else float('nan')
-    mean_npe = np.mean(epoch_npe) if epoch_npe else float('nan')
-    std_npe = np.std(epoch_npe) if epoch_npe else float('nan')
+    global_times.append(elapsed)
+
+    step_mean_w2 = np.mean(global_w2) if global_w2 else float('nan')
+    step_std_w2 = np.std(global_w2) if global_w2 else float('nan')
+    step_mean_npe = np.mean(global_npe) if global_npe else float('nan')
+    step_std_npe = np.std(global_npe) if global_npe else float('nan')
     logging.info(f"Training finished in {elapsed:.2f}s")
 
-    # final plotting
-    # plot_trajectories(x1s_plt_traj)
-    # plt.plot(losses)
-    # plt.xlabel('Iteration')
-    # plt.ylabel('Loss ')
-    # plt.title('Loss_'+config.name+' vs Iteration')
-    #plt.savefig("/Users/alan/Desktop/Image/Lagrangian_losses.png")
-    # plt.show()
 
-    # plt.plot(grad_norms)
-    # plt.xlabel('Iteration')
-    # plt.ylabel('Gradient Norm')
-    # plt.title('Gradient Norm_'+config.name+' vs Iteration')
-    #plt.savefig("/Users/alan/Desktop/Image/Lagrangian_grad.png")
-    # plt.show()
+    df = pd.DataFrame(
+            {
+                "key": config.train.key,
+                "w2": w2_val,
+                "npe": npe_val,
+                #"w2_mean": step_mean_w2,
+                #"w2_std": step_std_w2,
+                #"npe_mean": step_mean_npe,
+                #"npe_std": step_std_npe,
+                "time": global_times,
+            }
+        )
+    dir_path = f"/Users/alan/PyCharmMiscProject/Flow_Matching/data/{config.name}"
 
+    os.makedirs(dir_path, exist_ok=True)
+
+    file_path = os.path.join(dir_path, "experiments.csv")
+
+    if not os.path.exists(file_path):
+        df.to_csv(file_path, index=False, mode='w', header=True)
+    else:
+        df.to_csv(file_path, index=False, mode='a', header=False)
 
 
 
