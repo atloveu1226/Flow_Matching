@@ -4,6 +4,7 @@ def get_config():
     config = ml_collections.ConfigDict()
     config.name = "eulerian"
     config.train = ml_collections.ConfigDict()
+    config.train.key = 0
     config.train.batch_size = 128
     config.train.ema_decay = 0.999
     config.train.num_iter = 20

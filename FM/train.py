@@ -9,23 +9,24 @@ import optax
 import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
-from gaussian_and_moon import sample_8gaussians, sample_moons
 from absl import app
 from absl import flags
 from absl import logging
 from ml_collections import config_flags
 from torch.utils.tensorboard import SummaryWriter
+import pandas as pd
+import json
 
+# custom modules
+from gaussian_and_moon import sample_8gaussians, sample_moons
 from custom_fm import FlowMap, initialize_network, batch_sample
 from custom_losses import mean_reduce, eulerian, lagrangian
 # only place we use the original repo
 from old_settings.common.updates import update
 from old_settings.common.network_utils import setup_network
 from old_settings.common.interpolant import Interpolant
-##
 from metrics import wasserstein, NPE_batch
 from OT_sampler import OTPlanSampler
-import pandas as pd
 
 #python FM/train.py --config=FM/custom_configs/esd.py --mode=train --device=cpu --num_steps=10
 
@@ -42,9 +43,14 @@ flags.DEFINE_string("mode", "train", "Mode to run in: train or sample.")
 flags.DEFINE_string("device", "cpu", "Device to run on: cpu or cuda or tpu.")
 flags.DEFINE_integer("num_steps", 1000, "Number of steps for sampling.")
 
-global_times = []
-global_w2 = []
-global_npe = []
+global_times = []  # retained if multiple runs aggregated elsewhere
+global_eval_records = []  # list of dicts: {step, w2, npe}
+
+
+def log_scalar(writer: SummaryWriter, tag: str, value: float, step: int, also_console: bool = False):
+    writer.add_scalar(tag, float(value), step)
+    if also_console:
+        logging.info(f"[step {step}] {tag} = {float(value):.6f}")
 
 def main(argv):
     config = FLAGS.config
@@ -115,7 +121,7 @@ def main(argv):
     # ------------------------------
     # Training Loop
     # ------------------------------
-    losses = []
+    losses = []  
     grad_norms = []
     start_time = time.time()
     pbar = tqdm(range(num_iter), desc="Training", unit="iter")
@@ -130,7 +136,7 @@ def main(argv):
     eval_bs = getattr(config.train, "eval_bs", 1024)
 
     def evaluate(step: int, params, key):
-        """Compute metrics (w2, npe) and write images."""
+        """Compute metrics (w2, npe) and write images; returns metrics."""
         with torch.no_grad():
             #x0_eval = sample_8gaussians(eval_bs)
             x0_eval_jax = sample_moons(key, eval_bs)
@@ -149,13 +155,11 @@ def main(argv):
             wdist = wasserstein(x1_eval_torch, x1_target_torch, method="exact")
             npe = NPE_batch(params, x0_eval_jax, x1_eval_jax, interp=interp, X=flowmap_net, method="exact")
 
-            writer.add_scalar("metrics/W2", float(wdist), step)
-            writer.add_scalar("metrics/NPE", float(npe), step)
-            logging.info(f"[Eval {step}] W2: {float(wdist):.6f} | NPE: {float(npe):.6f}")
+            log_scalar(writer, "eval/W2", float(wdist), step)
+            log_scalar(writer, "eval/NPE", float(npe), step)
+            logging.info(f"[eval step {step}] W2={float(wdist):.6f} NPE={float(npe):.6f}")
 
             return float(wdist), float(npe)
-    epoch_w2 = []
-    epoch_npe = []
 
     for k in pbar:
         start_index = k * batch_size
@@ -192,8 +196,10 @@ def main(argv):
         writer.add_scalar("loss", float(loss_value), global_step)
         writer.add_scalar("grad_norm", float(grad_norm), global_step)
 
-        # if (global_step % log_interval) == 0:
-        #     logging.info(f"[Iter {global_step}] Loss: {float(loss_value):.6f} | GradNorm: {float(grad_norm):.6f}")
+        if (global_step % log_interval) == 0:
+            logging.info(
+                f"[step {global_step}] loss={float(loss_value):.6f} grad_norm={float(grad_norm):.6f}"
+            )
 
         if (global_step % sample_interval) == 0:
             with torch.no_grad():
@@ -224,8 +230,7 @@ def main(argv):
 
         if (global_step % eval_interval) == 0:
             w2_val, npe_val = evaluate(global_step, params, prng_key)
-            epoch_w2.append(w2_val)
-            epoch_npe.append(npe_val)
+            global_eval_records.append({"step": global_step, "w2": w2_val, "npe": npe_val})
 
 
         pbar.set_postfix({
@@ -240,44 +245,29 @@ def main(argv):
     # final evaluation
     if (global_step - 1) % eval_interval != 0:
         w2_val, npe_val = evaluate(global_step - 1, params, prng_key)
-        global_w2.append(w2_val)
-        global_npe.append(npe_val)
+        global_eval_records.append({"step": global_step - 1, "w2": w2_val, "npe": npe_val})
 
     end_time = time.time()
     elapsed = end_time - start_time
     global_times.append(elapsed)
 
-    step_mean_w2 = np.mean(global_w2) if global_w2 else float('nan')
-    step_std_w2 = np.std(global_w2) if global_w2 else float('nan')
-    step_mean_npe = np.mean(global_npe) if global_npe else float('nan')
-    step_std_npe = np.std(global_npe) if global_npe else float('nan')
     logging.info(f"Training finished in {elapsed:.2f}s")
 
+    # save everything
+    hist_dir = os.path.join("data", config.name)
+    # dir_path = f"/Users/alan/PyCharmMiscProject/Flow_Matching/data/{config.name}"
+    os.makedirs(hist_dir, exist_ok=True)
 
-    df = pd.DataFrame(
-            {
-                "key": config.train.key,
-                "w2": w2_val,
-                "npe": npe_val,
-                #"w2_mean": step_mean_w2,
-                #"w2_std": step_std_w2,
-                #"npe_mean": step_mean_npe,
-                #"npe_std": step_std_npe,
-                "time": global_times,
-            }
-        )
-    dir_path = f"/Users/alan/PyCharmMiscProject/Flow_Matching/data/{config.name}"
+    np.savez_compressed(
+        os.path.join(hist_dir, f"key_{config.train.key}.npz"),
+        steps=np.array([r["step"] for r in global_eval_records]),
+        w2=np.array([r["w2"] for r in global_eval_records]),
+        npe=np.array([r["npe"] for r in global_eval_records]),
+        elapsed=np.array(elapsed),
+    )
 
-    os.makedirs(dir_path, exist_ok=True)
-
-    file_path = os.path.join(dir_path, "experiments.csv")
-
-    if not os.path.exists(file_path):
-        df.to_csv(file_path, index=False, mode='w', header=True)
-    else:
-        df.to_csv(file_path, index=False, mode='a', header=False)
-
-
+    # dir_path = f"data/{config.name}"
+    # os.makedirs(dir_path, exist_ok=True)
 
 if __name__ == "__main__":
     flags.mark_flags_as_required(["config"])
