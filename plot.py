@@ -65,6 +65,7 @@ fig.suptitle('Flow Matching Metrics', fontsize=20)
 fig.tight_layout(rect=[0, 0, 1, 0.96])
 
 
-output_path = os.path.join(os.path.dirname(__file__), "../plots", "flow_matching_metrics.png")
+output_path = os.path.join(os.path.dirname(__file__), "plots", "flow_matching_metrics.png")
+print(f"Saving plot to: {output_path}")
 os.makedirs(os.path.dirname(output_path), exist_ok=True)
 plt.savefig(output_path, dpi=300)
