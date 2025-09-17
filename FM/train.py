@@ -147,16 +147,19 @@ def main(argv):
         """Compute metrics (w2, npe) and write images; returns metrics."""
         with torch.no_grad():
             #x0_eval = sample_8gaussians(eval_bs)
-            x0_eval_jax = sample_moons(key, eval_bs)
+            if FLAGS.data == "moon":
+                x0_eval_jax = sample_moons(key, eval_bs)
+            elif FLAGS.data == "gauss":
+                x0_eval_jax = jax.random.normal(key, (eval_bs, 2))
+            else:
+                raise ValueError(f"Unknown dataset {FLAGS.data}")
             #x0_eval_jax = jnp.array(x0_eval.numpy())
             ts_eval = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
             x1_eval, x1_traj = batch_sample(flowmap_net, params, x0_eval_jax, FLAGS.num_steps, ts_eval)
+
             x1_eval_jax = x1_eval
             x1_target = sample_8gaussians(key, eval_bs)
-            #x1_target = sample_moons(eval_bs)
 
-            # x0_eval_torch = torch.tensor(np.asarray(x0_eval_jax), copy=True)
-            # Ensure writable memory by copying (avoids PyTorch non-writable NumPy warning)
             x1_eval_torch = torch.tensor(np.asarray(x1_eval))
             x1_target_torch = torch.tensor(np.asarray(x1_target))
 
@@ -216,7 +219,12 @@ def main(argv):
         if (global_step % sample_interval) == 0:
             with torch.no_grad():
                 #x0_vis = sample_8gaussians(1024)
-                x0_vis_jax = sample_moons(prng_key, 1024)
+                if FLAGS.data == "moon":
+                    x0_vis_jax = sample_moons(prng_key, 1024)
+                elif FLAGS.data == "gauss":
+                    x0_vis_jax = jax.random.normal(prng_key, (1024, 2))
+                else:
+                    raise ValueError(f"Unknown dataset {FLAGS.data}")
                 #x0_vis_jax = jnp.array(x0_vis.numpy())
                 ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
                 x1_vis, x1_traj = batch_sample(flowmap_net, params, x0_vis_jax, FLAGS.num_steps, ts)

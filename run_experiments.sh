@@ -16,8 +16,8 @@ CONFIGS=(
 KEY_LIST=(1 2 3 4 5 6 7 8 9 10)
 # key_len=${#KEY_LIST[@]}
 
-NUM_TRAIN_STEPS=1000 # increase this
-BATCH_SIZE=16 # increase this
+NUM_TRAIN_STEPS=100_000 # increase this
+BATCH_SIZE=256 # increase this
 
 for CONFIG in "${CONFIGS[@]}"; do
     for key in "${KEY_LIST[@]}"; do
@@ -35,6 +35,8 @@ for CONFIG in "${CONFIGS[@]}"; do
             --config.train.num_iter=$NUM_TRAIN_STEPS \
             --config.train.batch_size=$BATCH_SIZE \
             --config.train.key="$key" \
+            --config.train.sample_interval=2000 \
+            --config.train.eval_interval=2000 \
             --num_steps=10 \
             --data="gauss"
         STATUS=$?
