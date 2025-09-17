@@ -211,10 +211,10 @@ def main(argv):
         writer.add_scalar("loss", float(loss_value), global_step)
         writer.add_scalar("grad_norm", float(grad_norm), global_step)
 
-        if (global_step % log_interval) == 0:
-            logging.info(
-                f"[step {global_step}] loss={float(loss_value):.6f} grad_norm={float(grad_norm):.6f}"
-            )
+        # if (global_step % log_interval) == 0:
+        #     logging.info(
+        #         f"[step {global_step}] loss={float(loss_value):.6f} grad_norm={float(grad_norm):.6f}"
+        #     )
 
         if (global_step % sample_interval) == 0:
             with torch.no_grad():
