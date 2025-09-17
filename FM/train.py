@@ -42,6 +42,8 @@ config_flags.DEFINE_config_file(
 flags.DEFINE_string("mode", "train", "Mode to run in: train or sample.")
 flags.DEFINE_string("device", "cpu", "Device to run on: cpu or cuda or tpu.")
 flags.DEFINE_integer("num_steps", 1000, "Number of steps for sampling.")
+flags.DEFINE_string("data", "moon", "Dataset to use: gauss or moon.")
+flags.DEFINE_bool("ot", True, "Use OT plan for training.")
 
 global_times = []  # retained if multiple runs aggregated elsewhere
 global_eval_records = []  # list of dicts: {step, w2, npe}
@@ -60,7 +62,7 @@ def main(argv):
     # flow map
     mlp = setup_network(config.network)
     flowmap_net = FlowMap(network=mlp)
-    
+
     # interpolant
     interp = Interpolant(
         alpha=lambda t: 1.0 - t,
@@ -68,7 +70,7 @@ def main(argv):
         alpha_dot=lambda _: -1.0,
         beta_dot=lambda _: 1.0,
     )
-    
+
     num_iter = config.train.num_iter
     batch_size = config.train.batch_size
     total_samples = num_iter * batch_size
@@ -76,7 +78,13 @@ def main(argv):
     prng_key = jax.random.PRNGKey(config.train.key)
 
     #x0_full_torch = sample_8gaussians(total_samples)
-    x0_full = sample_moons(prng_key, total_samples)
+    if FLAGS.data == "moon":
+        x0_full = sample_moons(prng_key, total_samples)
+    elif FLAGS.data == "gauss":
+        x0_full= jax.random.normal(prng_key, (total_samples, 2))
+    else:
+        raise ValueError(f"Unknown dataset {FLAGS.data}")
+
     #x1_full_torch = sample_moons(total_samples)
     x1_full= sample_8gaussians(prng_key,total_samples)
 
@@ -121,7 +129,7 @@ def main(argv):
     # ------------------------------
     # Training Loop
     # ------------------------------
-    losses = []  
+    losses = []
     grad_norms = []
     start_time = time.time()
     pbar = tqdm(range(num_iter), desc="Training", unit="iter")
@@ -161,6 +169,7 @@ def main(argv):
 
             return float(wdist), float(npe)
 
+    logging.info(f"Using OT plan: {FLAGS.ot}")
     for k in pbar:
         start_index = k * batch_size
         end_index = start_index + batch_size
@@ -170,10 +179,13 @@ def main(argv):
         x1batch = x1_full[batch_indices]
 
         # OT minibatch (copy to ensure writable tensors)
-        x0batch_torch = torch.tensor(np.array(x0batch))
-        x1batch_torch = torch.tensor(np.array(x1batch))
-        pair_sample = sampler.sample_plan(x0batch_torch, x1batch_torch)
-        x0_pair, x1_pair = pair_sample
+        if FLAGS.ot:
+            x0batch_torch = torch.tensor(np.array(x0batch))
+            x1batch_torch = torch.tensor(np.array(x1batch))
+            pair_sample = sampler.sample_plan(x0batch_torch, x1batch_torch)
+            x0_pair, x1_pair = pair_sample
+        else:
+            x0_pair, x1_pair = x0batch, x1batch
         x0_pair_jax = jax.device_put(jnp.array(x0_pair.numpy()), jax.devices(FLAGS.device)[0])
         x1_pair_jax = jax.device_put(jnp.array(x1_pair.numpy()), jax.devices(FLAGS.device)[0])
 

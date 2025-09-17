@@ -31,11 +31,12 @@ for CONFIG in "${CONFIGS[@]}"; do
         python FM/train.py \
             --config="$CONFIG" \
             --mode=train \
-            --device=cpu \
+            --device=tpu \
             --config.train.num_iter=$NUM_TRAIN_STEPS \
             --config.train.batch_size=$BATCH_SIZE \
             --config.train.key="$key" \
-            --num_steps=10
+            --num_steps=10 \
+            --data="gauss"
         STATUS=$?
         if [ $STATUS -eq 0 ]; then
             echo "Finished successfully."
@@ -48,4 +49,3 @@ done
 
 # plot results
 python plot.py
-
