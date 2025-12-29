@@ -1,17 +1,24 @@
 import ml_collections
-import jax
-import os
-
-import ml_collections
 
 def get_config():
     config = ml_collections.ConfigDict()
 
+    # data config
+    config.data = data = ml_collections.ConfigDict()
+    data.name = "mnist"
+    data.data_dir = None
+    data.binarized = True
+    data.dyna_binarized = True
+    data.image_size = 28
+    data.num_channels = 1
+    data.augment = False
+    data.shuffle = False
+    data.data_len = 60000
+    data.num_classes = 10
+
     # --- General Config ---
     config.name = 'cifar10_test_run'  # 名称改为测试运行
     config.alpha = 0.5
-
-    # --- Problem Definition ---
     config.problem = ml_collections.ConfigDict()
     config.problem.image_dims = (32, 32, 3) # Image dimensions (H, W, C)
 
