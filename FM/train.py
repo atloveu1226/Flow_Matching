@@ -19,12 +19,9 @@ import json
 
 # custom modules
 from gaussian_and_moon import sample_8gaussians, sample_moons
-from custom_fm import FlowMap, initialize_network, batch_sample
+from custom_fm import FlowMap, Interpolant, initialize_network, batch_sample
 from custom_losses import mean_reduce, eulerian, lagrangian
-# only place we use the original repo
-from old_settings.common.updates import update
-from old_settings.common.network_utils import setup_network
-from old_settings.common.interpolant import Interpolant
+from unet import setup_network
 from metrics import wasserstein, NPE_batch
 from OT_sampler import OTPlanSampler
 
@@ -199,9 +196,9 @@ def main(argv):
 
         # loss and update
         loss_fn_args = (x0_pair_jax, x1_pair_jax, sbatch, tbatch)
-        params, opt_state, loss_value, grads = update(
-            params, opt_state, opt, curr_loss, loss_fn_args
-        )
+        loss_value, grads = jax.value_and_grad(curr_loss)(params, *loss_fn_args)
+        updates, opt_state = opt.update(grads, opt_state, params=params)
+        params = optax.apply_updates(params, updates)
 
         # for logging
         grad_norm = jnp.sqrt(sum(jnp.sum(jnp.square(g)) for g in jax.tree_util.tree_leaves(grads)))

@@ -3,8 +3,7 @@ import functools
 import jax
 import jax.numpy as jnp
 
-from old_settings.common.flow_map import FlowMap
-from old_settings.common.interpolant import Interpolant
+from .custom_fm import FlowMap, Interpolant
 
 def mean_reduce(func):
     """

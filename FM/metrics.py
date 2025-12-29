@@ -7,8 +7,6 @@ import ot as pot
 import jax.numpy as jnp
 import jax
 
-from old_settings.common.interpolant import Interpolant
-
 
 def wasserstein(
     x0: torch.Tensor,

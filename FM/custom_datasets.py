@@ -1,6 +1,6 @@
 import os
 import functools
-from typing import Literal, Tuple, Optional
+from typing import Literal, Tuple, Optional, Generator
 
 import numpy as np
 import jax
@@ -8,10 +8,9 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 
 
-def get_dataset(rng, config):
-    """Build train and validation iterators for the configured dataset."""
+def get_dataset(rng, config) -> tuple[Generator, Optional[Generator]]:
+    """Returns train and validation iterators for the configured dataset."""
     _validate_batch_sizes(config)
-    _validate_binarization_support(config)
 
     input_dtype = tf.float32
     local_train_bs = config.train.batch_size // jax.process_count()
@@ -52,13 +51,6 @@ def _validate_batch_sizes(config):
     if config.evaluation.eval_batch_size % process_count != 0:
         raise ValueError(
             "Eval batch size must be divisible by the number of devices"
-        )
-
-
-def _validate_binarization_support(config):
-    if config.data.binarized and config.data.name not in ["mnist", "omniglot"]:
-        raise ValueError(
-            "Binarized datasets are only supported for MNIST and Omniglot."
         )
 
 
@@ -138,7 +130,7 @@ def _load_image_datasets(
     input_dtype=tf.float32,
     config=None,
 ):
-    """Load datasets stored on disk as image files."""
+    """Loads datasets stored on disk as image files."""
     train_files = tf.io.gfile.glob(os.path.join(data_dir, train_pattern))
     valid_files = tf.io.gfile.glob(os.path.join(data_dir, valid_pattern))
 
@@ -161,7 +153,7 @@ def _load_image_datasets(
 
 
 def _preprocess_tfds_example(idx, data, config, input_dtype):
-    """Preprocess a TFDS example."""
+    """Preprocesses a single TFDS example."""
     img = data["image"]
     label = data.get("label", -1)
 
@@ -180,7 +172,7 @@ def _preprocess_tfds_example(idx, data, config, input_dtype):
 
 
 def _load_and_preprocess_image(idx, file_path, config, input_dtype):
-    """Load and preprocess an image from disk; labels are not provided."""
+    """Loads and preprocesses an image from disk; labels are not provided."""
     assert config.data.name not in ["mnist", "omniglot"]
     img = tf.io.read_file(file_path)
     img = tf.image.decode_png(img, channels=3)

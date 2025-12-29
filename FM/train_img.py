@@ -3,8 +3,6 @@ import time
 import functools
 from tqdm import tqdm
 
-import torch
-import torchvision  # Added for image handling
 import jax
 import optax
 import jax.numpy as jnp
@@ -13,16 +11,12 @@ from absl import app
 from absl import flags
 from absl import logging
 from ml_collections import config_flags
-from torch.utils.tensorboard import SummaryWriter
+from tensorboard import SummaryWriter
 
-# --- Core Module Imports ---
-from custom_fm import FlowMap, initialize_network, batch_sample
+from custom_fm import FlowMap, Interpolant, initialize_network, batch_sample
 from custom_losses import mean_reduce, eulerian, lagrangian
-from old_settings.common.updates import update
-from old_settings.common.network_utils import setup_network
-from old_settings.common.interpolant import Interpolant
-# --- Added: Import our custom data loader ---
-from data_loader import get_cifar10_iterator
+from .unet import setup_network
+from custom_datasets import get_dataset
 
 FLAGS = flags.FLAGS
 
@@ -84,15 +78,15 @@ def main(argv):
         beta_dot=lambda _: 1.0,
     )
 
-    # Note: The in_axes for vmap might need adjustment based on your loss function's inputs.
-    # Assuming the loss function takes (params, x0, x1, t, label)
-    @mean_reduce
-    @functools.partial(jax.vmap, in_axes=(None, 0, 0, 0, 0, 0))
-    def curr_loss(params, x0, x1, s, t, label):
-        # The loss function here needs to handle label input if your model is conditional.
-        # For simplicity, s and label are passed but you can customize their use.
-        return config.alpha * lagrangian(params, x0, x1, s, t, X=flowmap_net, label=label) + \
-            (1 - config.alpha) * eulerian(params, x0, x1, s, t, X=flowmap_net, interp=interp, label=label)
+    # # Note: The in_axes for vmap might need adjustment based on your loss function's inputs.
+    # # Assuming the loss function takes (params, x0, x1, t, label)
+    # @mean_reduce
+    # @functools.partial(jax.vmap, in_axes=(None, 0, 0, 0, 0, 0))
+    # def curr_loss(params, x0, x1, s, t, label):
+    #     # The loss function here needs to handle label input if your model is conditional.
+    #     # For simplicity, s and label are passed but you can customize their use.
+    #     return config.alpha * lagrangian(params, x0, x1, s, t, X=flowmap_net, label=label) + \
+    #         (1 - config.alpha) * eulerian(params, x0, x1, s, t, X=flowmap_net, interp=interp, label=label)
 
     # --- 6. Set up Training Loop ---
     global_step = 0
@@ -125,15 +119,16 @@ def main(argv):
 
         # --- Model Update ---
         loss_fn_args = (x0_batch, x1_batch, sbatch, tbatch, labels)
-        params, opt_state, loss_value, grads = update(
-            params, opt_state, opt, curr_loss, loss_fn_args
-        )
+        loss_value, grads = jax.value_and_grad(curr_loss)(params, *loss_fn_args)
+        updates, opt_state = opt.update(grads, opt_state, params=params)
+        params = optax.apply_updates(params, updates)
 
         # --- Logging ---
         grad_norm = jnp.sqrt(sum(jnp.sum(jnp.square(g)) for g in jax.tree_util.tree_leaves(grads)))
         writer.add_scalar("loss", float(loss_value), global_step)
         writer.add_scalar("grad_norm", float(grad_norm), global_step)
         pbar.set_postfix({'Loss': f'{float(loss_value):.6f}'})
+
 
         # --- Generate and Save Samples ---
         if (global_step % sample_interval) == 0:
@@ -151,15 +146,9 @@ def main(argv):
             generated_images = (generated_images + 1) / 2.0
             generated_images = jnp.clip(generated_images, 0.0, 1.0)
 
-            # JAX (NHWC) -> Torch (NCHW)
-            img_tensor = torch.tensor(np.asarray(generated_images)).permute(0, 3, 1, 2)
-
             # Save as an image file
-            out_path = f"../samples/{config.name}/step_{global_step}.png"
-            torchvision.utils.save_image(img_tensor, out_path, nrow=8)
 
             # Also log to TensorBoard
-            writer.add_image("generated_samples", torchvision.utils.make_grid(img_tensor, nrow=8), global_step)
 
         global_step += 1
 

@@ -1,0 +1,22 @@
+# for uv managed
+# --find-links https://storage.googleapis.com/jax-releases/jax_releases.html
+jax[cuda]
+flax
+optax
+configargparse
+hydra-core
+lmdb
+matplotlib
+ml-collections
+imageio[ffmpeg]
+omegaconf
+ott-jax
+pillow
+seaborn
+tqdm
+tensorflow
+tensorflow-datasets
+wandb
+numpy
+absl-py
+# diffusers
