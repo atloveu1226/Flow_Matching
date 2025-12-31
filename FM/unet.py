@@ -7,12 +7,13 @@ Helper routines for neural network definitions.
 
 from typing import Callable
 
+from absl import logging
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
 from ml_collections import config_dict
 
-from .edm2net import EDM2FlowMapUNet
+from edm2net import PrecondFlowMap
 
 
 def setup_network(
@@ -36,6 +37,23 @@ def setup_network(
     else:
         raise ValueError(f"Network type {config.network_type} not recognized.")
 
+def initialize_network(
+    net: nn.Module, ex_input: jnp.ndarray, prng_key: jnp.ndarray
+):
+    ex_s = ex_t = 0.0
+    ex_label = 0
+
+    params = {
+        "params": net.init(prng_key, ex_s, ex_t, ex_input, ex_label, train=False)[
+            "params"
+        ]
+    }
+    prng_key = jax.random.split(prng_key)[0]
+
+    leaves, _ = jax.tree_util.tree_flatten(params)
+    num_params = sum(leaf.size for leaf in leaves)
+    logging.info(f"Number of parameters: {num_params}")
+    return params, prng_key
 
 class MLP(nn.Module):
     """Simple MLP network with square weight pattern."""
@@ -87,7 +105,7 @@ class EDM2FlowMap(nn.Module):
         self.one_hot_dim = (
             self.config.label_dim + 1 if self.config.use_cfg else self.config.label_dim
         )
-        self.net = edm2_net.PrecondFlowMap(
+        self.net = PrecondFlowMap(
             img_resolution=self.config.img_resolution,
             img_channels=self.config.img_channels,
             label_dim=self.one_hot_dim,

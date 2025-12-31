@@ -1,13 +1,8 @@
 # Python cache and Jupyter
 __pycache__/
-*.py[cod]
 .ipynb_checkpoints
 
-# Virtual environments
-.env
-.venv
-env/
-venv/
+.venv/
 
 # IDE settings
 .vscode/

@@ -168,7 +168,25 @@ def _preprocess_tfds_example(idx, data, config, input_dtype):
         if config.data.augment:
             img = tf.image.flip_left_right(img)
 
+    img = _repeat_grayscale_channels(img)
     return {"image": img, "label": label, "idx": idx}
+
+
+def _repeat_grayscale_channels(img):
+    """Repeat grayscale channels to RGB for consistent network inputs."""
+    if img.shape.rank == 2:
+        img = img[..., None]
+
+    channels = img.shape[-1]
+    if channels == 1:
+        return tf.repeat(img, repeats=3, axis=-1)
+    if channels is None:
+        return tf.cond(
+            tf.equal(tf.shape(img)[-1], 1),
+            lambda: tf.repeat(img, repeats=3, axis=-1),
+            lambda: img,
+        )
+    return img
 
 
 def _load_and_preprocess_image(idx, file_path, config, input_dtype):
@@ -217,7 +235,6 @@ def _prepare_for_device(batch, config):
         x = x._numpy()
         should_normalize = (
             not config.data.binarized
-            or getattr(config.model, "decoder", None) == "gaussian"
         )
         if should_normalize:
             x = _normalize_to_neg_one_to_one(x)
