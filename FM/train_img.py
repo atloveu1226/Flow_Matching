@@ -11,7 +11,8 @@ import numpy as np
 from absl import app
 from absl import flags
 from absl import logging
-from ml_collections import config_flags
+from ml_collections import config_flags, ConfigDict
+import wandb
 import tensorflow as tf
 
 from custom_fm import FlowMap, Interpolant, batch_sample
@@ -33,14 +34,23 @@ flags.DEFINE_string("device", "cpu", "Device to run on: cpu or cuda or tpu.")
 flags.DEFINE_integer("num_steps", 1000, "Number of steps for sampling.")
 
 
-def log_scalar(writer, tag: str, value: float, step: int, also_console: bool = False):
+def log_scalar(
+    cfg: ConfigDict,
+    writer,
+    tag: str,
+    value: float,
+    step: int,
+    also_console: bool = False,
+):
     with writer.as_default():
         tf.summary.scalar(tag, float(value), step=step)
+    if cfg.logging.use_wandb and jax.process_index() == 0 and wandb.run is not None:
+        wandb.log({tag: float(value)}, step=step)
     if also_console:
         logging.info(f"[step {step}] {tag} = {float(value):.6f}")
 
 
-def log_image(writer, tag: str, image, step: int):
+def log_image(cfg: ConfigDict, writer, tag: str, image, step: int):
     img = np.asarray(image)
     if img.ndim == 2:
         img = img[..., None]
@@ -49,6 +59,9 @@ def log_image(writer, tag: str, image, step: int):
     img = img[None, ...]
     with writer.as_default():
         tf.summary.image(tag, img, step=step)
+    if cfg.logging.use_wandb and jax.process_index() == 0 and wandb.run is not None:
+        # add tag
+        wandb.log({tag: wandb.Image(img[0])}, step=step)
 
 
 def prepare_batch(batch, config):
@@ -98,7 +111,11 @@ def main(argv):
 
     # --- 3. Initialize Model Parameters ---
     # edm net uses channel-first
-    img_dims = (config.data.num_channels, config.data.image_size, config.data.image_size)
+    img_dims = (
+        config.data.num_channels,
+        config.data.image_size,
+        config.data.image_size,
+    )
     dummy_image_input = jnp.zeros(img_dims)
     prng_key = jax.random.PRNGKey(config.train.key)
     params, prng_key = initialize_network(flowmap_net, dummy_image_input, prng_key)
@@ -126,7 +143,8 @@ def main(argv):
     @functools.partial(jax.vmap, in_axes=(None, 0, 0, 0, 0, 0, 0))
     def curr_loss(params, x0, x1, s, t, label, rng):
         # return config.alpha * lagrangian(params, x0, x1, s, t, X=flowmap_net, label=label) + \
-        #     (1 - config.alpha) * eulerian(params, x0, x1, s, t, X=flowmap_net, interp=interp, label=label)
+        #     (1 - config.alpha)
+        #     * eulerian(params, x0, x1, s, t, X=flowmap_net, interp=interp, label=label)
         return lagrangian(params, x0, x1, s, t, X=flowmap_net, rng=rng)
 
     @jax.jit
@@ -157,6 +175,12 @@ def main(argv):
     writer = tf.summary.create_file_writer(
         logdir=f"runs/exp_{timestamp}_key:{config.train.key}"
     )
+    if config.logging.use_wandb and jax.process_index() == 0:
+        wandb_project = getattr(config.logging, "wandb_project", "flow_matching")
+        base_run_name = getattr(config.logging, "run_name", config.name)
+        # run_name = f"{base_run_name}_{timestamp}_key:{config.train.key}"
+        run_name = base_run_name
+        wandb.init(project=wandb_project, name=run_name, config=config.to_dict())
     os.makedirs(f"../samples/{config.name}", exist_ok=True)
 
     sample_interval = config.train.sample_interval
@@ -168,10 +192,9 @@ def main(argv):
         )
 
         # logging
-        log_scalar(writer, "loss", float(loss_value), global_step)
-        log_scalar(writer, "grad_norm", float(grad_norm), global_step)
-        pbar.set_postfix({'Loss': f'{float(loss_value):.6f}'})
-
+        log_scalar(config, writer, "loss", float(loss_value), global_step)
+        log_scalar(config, writer, "grad_norm", float(grad_norm), global_step)
+        pbar.set_postfix({"Loss": f"{float(loss_value):.6f}"})
 
         # --- Generate and Save Samples ---
         if (global_step % sample_interval) == 0:
@@ -188,7 +211,7 @@ def main(argv):
                 x0_vis,
                 FLAGS.num_steps,
                 ts,
-                None, # no labels for now
+                None,  # no labels for now
             )
 
             # Convert image data from [-1, 1] to [0, 1] for saving
@@ -196,18 +219,28 @@ def main(argv):
             generated_images = jnp.clip(generated_images, 0.0, 1.0)
 
             # Save as an image file
-            img_path = save_image(config, global_step, generated_images, nrow=8, prefix="sampled")
+            img_path = save_image(
+                config, global_step, generated_images, nrow=8, prefix="sampled"
+            )
             logging.info(f"Samples saved to {img_path}.")
 
             # Also log to TensorBoard
             for i in range(generated_images.shape[0]):
-                log_image(writer, f"sampled/image_{i}", generated_images[i], global_step)
+                log_image(
+                    config,
+                    writer,
+                    f"sampled/image_{i}",
+                    generated_images[i],
+                    global_step,
+                )
 
         global_step += 1
 
     pbar.close()
     writer.flush()
     writer.close()
+    if config.logging.use_wandb and jax.process_index() == 0 and wandb.run is not None:
+        wandb.finish()
     logging.info("Training finished.")
 
 

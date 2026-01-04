@@ -80,5 +80,8 @@ def get_config():
     # logging config
     config.logging = ml_collections.ConfigDict()
     config.logging.output_dir = "checkpoints"
+    config.logging.use_wandb = False
+    config.logging.wandb_project = "flow_matching"
+    config.logging.run_name = "image_experiment"
 
     return config
