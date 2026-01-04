@@ -129,6 +129,27 @@ def main(argv):
         #     (1 - config.alpha) * eulerian(params, x0, x1, s, t, X=flowmap_net, interp=interp, label=label)
         return lagrangian(params, x0, x1, s, t, X=flowmap_net, rng=rng)
 
+    @jax.jit
+    def train_step(params, opt_state, prng_key, batch):
+        x1_batch, labels = prepare_batch(batch, config)
+        batch_size = x1_batch.shape[0]
+
+        prng_key, noise_key, tkey, skey, dropout_key = jax.random.split(prng_key, num=5)
+        x0_batch = jax.random.normal(noise_key, shape=x1_batch.shape)
+
+        tbatch = jax.random.uniform(tkey, shape=(batch_size,), minval=tmin, maxval=tmax)
+        sbatch = jax.random.uniform(skey, shape=(batch_size,), minval=tmin, maxval=tmax)
+
+        dropout_keys = jax.random.split(dropout_key, num=batch_size)
+        loss_fn_args = (x0_batch, x1_batch, sbatch, tbatch, labels, dropout_keys)
+        loss_value, grads = jax.value_and_grad(curr_loss)(params, *loss_fn_args)
+
+        updates, opt_state = opt.update(grads, opt_state, params=params)
+        params = optax.apply_updates(params, updates)
+
+        grad_norm = optax.global_norm(grads)
+        return params, opt_state, prng_key, loss_value, grad_norm
+
     # --- 6. Set up Training Loop ---
     global_step = 0
     pbar = tqdm(range(config.train.num_iter), desc="Training", unit="iter")
@@ -142,24 +163,11 @@ def main(argv):
 
     for step in pbar:
         batch = next(train_iter)
-        x1_batch, labels = prepare_batch(batch, config)
-        batch_size = x1_batch.shape[0]
-        prng_key, noise_key, tkey, skey, dropout_key = jax.random.split(prng_key, num=5)
-        x0_batch = jax.random.normal(noise_key, shape=x1_batch.shape)
-
-        # sample time steps
-        tbatch = jax.random.uniform(tkey, shape=(batch_size,), minval=tmin, maxval=tmax)
-        sbatch = jax.random.uniform(skey, shape=(batch_size,), minval=tmin, maxval=tmax)
-
-        # model update step
-        dropout_keys = jax.random.split(dropout_key, num=batch_size)
-        loss_fn_args = (x0_batch, x1_batch, sbatch, tbatch, labels, dropout_keys)
-        loss_value, grads = jax.value_and_grad(curr_loss)(params, *loss_fn_args)
-        updates, opt_state = opt.update(grads, opt_state, params=params)
-        params = optax.apply_updates(params, updates)
+        params, opt_state, prng_key, loss_value, grad_norm = train_step(
+            params, opt_state, prng_key, batch
+        )
 
         # logging
-        grad_norm = jnp.sqrt(sum(jnp.sum(jnp.square(g)) for g in jax.tree_util.tree_leaves(grads)))
         log_scalar(writer, "loss", float(loss_value), global_step)
         log_scalar(writer, "grad_norm", float(grad_norm), global_step)
         pbar.set_postfix({'Loss': f'{float(loss_value):.6f}'})
