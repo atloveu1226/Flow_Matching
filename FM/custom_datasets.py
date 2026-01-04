@@ -49,9 +49,7 @@ def _validate_batch_sizes(config):
     if config.train.batch_size % process_count != 0:
         raise ValueError("Train batch size must be divisible by the number of devices")
     if config.evaluation.eval_batch_size % process_count != 0:
-        raise ValueError(
-            "Eval batch size must be divisible by the number of devices"
-        )
+        raise ValueError("Eval batch size must be divisible by the number of devices")
 
 
 def _load_raw_datasets(
@@ -233,9 +231,7 @@ def _prepare_for_device(batch, config):
 
     def _normalize_and_reshape(x):
         x = x._numpy()
-        should_normalize = (
-            not config.data.binarized
-        )
+        should_normalize = not config.data.binarized
         if should_normalize:
             x = _normalize_to_neg_one_to_one(x)
         # (bs, h, w, c) -> (local_devices, device_bs, h, w, c)

@@ -25,7 +25,7 @@ from unet import setup_network, initialize_network
 from metrics import wasserstein, NPE_batch
 from OT_sampler import OTPlanSampler
 
-#python FM/train.py --config=FM/custom_configs/esd.py --mode=train --device=cpu --num_steps=10
+# python FM/train.py --config=FM/custom_configs/esd.py --mode=train --device=cpu --num_steps=10
 
 
 FLAGS = flags.FLAGS
@@ -46,15 +46,18 @@ global_times = []  # retained if multiple runs aggregated elsewhere
 global_eval_records = []  # list of dicts: {step, w2, npe}
 
 
-def log_scalar(writer: SummaryWriter, tag: str, value: float, step: int, also_console: bool = False):
+def log_scalar(
+    writer: SummaryWriter, tag: str, value: float, step: int, also_console: bool = False
+):
     writer.add_scalar(tag, float(value), step)
     if also_console:
         logging.info(f"[step {step}] {tag} = {float(value):.6f}")
 
+
 def main(argv):
     config = FLAGS.config
-    tmin = config.train.tmin #0.0 or 1e-3 to avoid numerical instabilities
-    tmax = config.train.tmax #1.0
+    tmin = config.train.tmin  # 0.0 or 1e-3 to avoid numerical instabilities
+    tmax = config.train.tmax  # 1.0
 
     # flow map
     mlp = setup_network(config.network)
@@ -74,20 +77,22 @@ def main(argv):
 
     prng_key = jax.random.PRNGKey(config.train.key)
 
-    #x0_full_torch = sample_8gaussians(total_samples)
+    # x0_full_torch = sample_8gaussians(total_samples)
     if FLAGS.data == "moon":
         x0_full = sample_moons(prng_key, total_samples)
     elif FLAGS.data == "gauss":
-        x0_full= jax.random.normal(prng_key, (total_samples, 2))
+        x0_full = jax.random.normal(prng_key, (total_samples, 2))
     else:
         raise ValueError(f"Unknown dataset {FLAGS.data}")
 
-    #x1_full_torch = sample_moons(total_samples)
-    x1_full= sample_8gaussians(prng_key,total_samples)
+    # x1_full_torch = sample_moons(total_samples)
+    x1_full = sample_8gaussians(prng_key, total_samples)
 
     # create progress bar
 
-    params, prng_key = initialize_network(flowmap_net, sample_moons(prng_key, 1)[0], prng_key)
+    params, prng_key = initialize_network(
+        flowmap_net, sample_moons(prng_key, 1)[0], prng_key
+    )
     params = jax.device_put(params, jax.devices(FLAGS.device)[0])
 
     # optimizer
@@ -95,31 +100,29 @@ def main(argv):
     opt = optax.chain(
         optax.clip_by_global_norm(1.0),
         # optax.radam(learning_rate=config.train.lr),
-        optax.adam(learning_rate=config.train.lr), )
+        optax.adam(learning_rate=config.train.lr),
+    )
     opt_state = opt.init(params)
 
     @mean_reduce
     @functools.partial(jax.vmap, in_axes=(None, 0, 0, 0, 0))
     def curr_loss(params, x0, x1, s, t):
-        if config.name.lower() == 'eulerian':
+        if config.name.lower() == "eulerian":
             return eulerian(params, x0, x1, s, t, X=flowmap_net, interp=interp)
-        elif config.name.lower() == 'lagrangian':
+        elif config.name.lower() == "lagrangian":
             return lagrangian(params, x0, x1, s, t, X=flowmap_net)
         else:
             raise ValueError(f"Unknown config.name {config.name}")
 
-
     sampler = OTPlanSampler(method="exact")
 
-    #x0_full = jax.device_put(jnp.array(x0_full_torch.numpy()), jax.devices(FLAGS.device)[0])
-    #x1_full = jax.device_put(jnp.array(x1_full_torch.numpy()), jax.devices(FLAGS.device)[0])
+    # x0_full = jax.device_put(jnp.array(x0_full_torch.numpy()), jax.devices(FLAGS.device)[0])
+    # x1_full = jax.device_put(jnp.array(x1_full_torch.numpy()), jax.devices(FLAGS.device)[0])
     logging.info(f"Data moved to {FLAGS.device}.")
     data_key = jax.random.PRNGKey(0)
     data_key, _ = jax.random.split(data_key)
     shuffled_indices = jax.random.permutation(data_key, total_samples)
     shuffled_indices = jax.device_put(shuffled_indices, jax.devices(FLAGS.device)[0])
-
-
 
     global_step = 0
 
@@ -143,15 +146,17 @@ def main(argv):
     def evaluate(step: int, params, key):
         """Compute metrics (w2, npe) and write images; returns metrics."""
         with torch.no_grad():
-            #x0_eval = sample_8gaussians(eval_bs)
+            # x0_eval = sample_8gaussians(eval_bs)
             if FLAGS.data == "moon":
                 x0_eval_jax = sample_moons(key, eval_bs)
             elif FLAGS.data == "gauss":
                 x0_eval_jax = jax.random.normal(key, (eval_bs, 2))
             else:
                 raise ValueError(f"Unknown dataset {FLAGS.data}")
-            #x0_eval_jax = jnp.array(x0_eval.numpy())
-            ts_eval = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
+            # x0_eval_jax = jnp.array(x0_eval.numpy())
+            ts_eval = jnp.linspace(
+                config.train.tmin, config.train.tmax, FLAGS.num_steps + 1
+            )
             x1_eval, x1_traj = batch_sample(
                 flowmap_net.apply, params, x0_eval_jax, FLAGS.num_steps, ts_eval
             )
@@ -163,11 +168,20 @@ def main(argv):
             x1_target_torch = torch.tensor(np.asarray(x1_target))
 
             wdist = wasserstein(x1_eval_torch, x1_target_torch, method="exact")
-            npe = NPE_batch(params, x0_eval_jax, x1_eval_jax, interp=interp, X=flowmap_net, method="exact")
+            npe = NPE_batch(
+                params,
+                x0_eval_jax,
+                x1_eval_jax,
+                interp=interp,
+                X=flowmap_net,
+                method="exact",
+            )
 
             log_scalar(writer, "eval/W2", float(wdist), step)
             log_scalar(writer, "eval/NPE", float(npe), step)
-            logging.info(f"[eval step {step}] W2={float(wdist):.6f} NPE={float(npe):.6f}")
+            logging.info(
+                f"[eval step {step}] W2={float(wdist):.6f} NPE={float(npe):.6f}"
+            )
 
             return float(wdist), float(npe)
 
@@ -188,8 +202,12 @@ def main(argv):
             x0_pair, x1_pair = pair_sample
         else:
             x0_pair, x1_pair = x0batch, x1batch
-        x0_pair_jax = jax.device_put(jnp.array(x0_pair.numpy()), jax.devices(FLAGS.device)[0])
-        x1_pair_jax = jax.device_put(jnp.array(x1_pair.numpy()), jax.devices(FLAGS.device)[0])
+        x0_pair_jax = jax.device_put(
+            jnp.array(x0_pair.numpy()), jax.devices(FLAGS.device)[0]
+        )
+        x1_pair_jax = jax.device_put(
+            jnp.array(x1_pair.numpy()), jax.devices(FLAGS.device)[0]
+        )
 
         # random times
         prng_key, tkey, skey = jax.random.split(prng_key, num=3)
@@ -203,7 +221,9 @@ def main(argv):
         params = optax.apply_updates(params, updates)
 
         # for logging
-        grad_norm = jnp.sqrt(sum(jnp.sum(jnp.square(g)) for g in jax.tree_util.tree_leaves(grads)))
+        grad_norm = jnp.sqrt(
+            sum(jnp.sum(jnp.square(g)) for g in jax.tree_util.tree_leaves(grads))
+        )
         losses.append(float(loss_value))
         grad_norms.append(float(grad_norm))
 
@@ -217,24 +237,32 @@ def main(argv):
 
         if (global_step % sample_interval) == 0:
             with torch.no_grad():
-                #x0_vis = sample_8gaussians(1024)
+                # x0_vis = sample_8gaussians(1024)
                 if FLAGS.data == "moon":
                     x0_vis_jax = sample_moons(prng_key, 1024)
                 elif FLAGS.data == "gauss":
                     x0_vis_jax = jax.random.normal(prng_key, (1024, 2))
                 else:
                     raise ValueError(f"Unknown dataset {FLAGS.data}")
-                #x0_vis_jax = jnp.array(x0_vis.numpy())
-                ts = jnp.linspace(config.train.tmin, config.train.tmax, FLAGS.num_steps + 1)
+                # x0_vis_jax = jnp.array(x0_vis.numpy())
+                ts = jnp.linspace(
+                    config.train.tmin, config.train.tmax, FLAGS.num_steps + 1
+                )
                 x1_vis, x1_traj = batch_sample(
                     flowmap_net.apply, params, x0_vis_jax, FLAGS.num_steps, ts
                 )
                 x1_traj = jnp.permute_dims(x1_traj, (1, 0, 2))
                 n = min(2000, x1_traj.shape[1])
                 plt.figure(figsize=(6, 6))
-                plt.scatter(x1_traj[0, :n, 0], x1_traj[0, :n, 1], s=10, alpha=0.8, c="black")
-                plt.scatter(x1_traj[:, :n, 0], x1_traj[:, :n, 1], s=0.2, alpha=0.2, c="olive")
-                plt.scatter(x1_traj[-1, :n, 0], x1_traj[-1, :n, 1], s=4, alpha=1, c="blue")
+                plt.scatter(
+                    x1_traj[0, :n, 0], x1_traj[0, :n, 1], s=10, alpha=0.8, c="black"
+                )
+                plt.scatter(
+                    x1_traj[:, :n, 0], x1_traj[:, :n, 1], s=0.2, alpha=0.2, c="olive"
+                )
+                plt.scatter(
+                    x1_traj[-1, :n, 0], x1_traj[-1, :n, 1], s=4, alpha=1, c="blue"
+                )
                 plt.legend(["Prior sample z(S)", "Flow", "z(0)"])
                 plt.xticks([])
                 plt.yticks([])
@@ -243,21 +271,18 @@ def main(argv):
                 plt.savefig(out_path)
                 plt.close()
                 writer.add_image(
-                    "samples",
-                    plt.imread(out_path),
-                    global_step,
-                    dataformats="HWC"
+                    "samples", plt.imread(out_path), global_step, dataformats="HWC"
                 )
 
         if (global_step % eval_interval) == 0:
             w2_val, npe_val = evaluate(global_step, params, prng_key)
-            global_eval_records.append({"step": global_step, "w2": w2_val, "npe": npe_val})
+            global_eval_records.append(
+                {"step": global_step, "w2": w2_val, "npe": npe_val}
+            )
 
-
-        pbar.set_postfix({
-            'Loss': f'{float(loss_value):.6f}',
-            'GradNorm': f'{float(grad_norm):.6f}'
-        })
+        pbar.set_postfix(
+            {"Loss": f"{float(loss_value):.6f}", "GradNorm": f"{float(grad_norm):.6f}"}
+        )
 
         global_step += 1
     pbar.close()
@@ -266,7 +291,9 @@ def main(argv):
     # final evaluation
     if (global_step - 1) % eval_interval != 0:
         w2_val, npe_val = evaluate(global_step - 1, params, prng_key)
-        global_eval_records.append({"step": global_step - 1, "w2": w2_val, "npe": npe_val})
+        global_eval_records.append(
+            {"step": global_step - 1, "w2": w2_val, "npe": npe_val}
+        )
 
     end_time = time.time()
     elapsed = end_time - start_time
@@ -289,6 +316,7 @@ def main(argv):
 
     # dir_path = f"data/{config.name}"
     # os.makedirs(dir_path, exist_ok=True)
+
 
 if __name__ == "__main__":
     flags.mark_flags_as_required(["config"])

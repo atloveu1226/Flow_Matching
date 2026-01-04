@@ -5,6 +5,7 @@ BS=1
 EVAL_BS=1
 
 DEVICE="cuda"
+USE_WANDB=true
 
 python FM/train_img.py --config=FM/custom_configs/image.py \
   --device=$DEVICE \
@@ -14,4 +15,5 @@ python FM/train_img.py --config=FM/custom_configs/image.py \
   --config.train.eval_interval=$EVAL_INTERVAL \
   --config.train.eval_bs=$EVAL_BS \
   --config.train.batch_size=$BS \
-  --config.evaluation.eval_batch_size=$EVAL_BS
+  --config.evaluation.eval_batch_size=$EVAL_BS \
+  --config.logging.use_wandb=$USE_WANDB

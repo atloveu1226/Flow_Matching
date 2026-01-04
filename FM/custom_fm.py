@@ -44,6 +44,7 @@ class Interpolant:
 
 class FlowMap(nn.Module):
     """Basic class for a flow map."""
+
     network: nn.Module = None
 
     def setup(self):
@@ -84,6 +85,7 @@ def sample(apply_fn, params, x0, N, ts, label=None):
     final_state, traj = jax.lax.scan(step, x0, jnp.arange(N))
     traj = jnp.concatenate([x0[None, ...], traj], axis=0)
     return final_state, traj
+
 
 @functools.partial(jax.jit, static_argnums=(0, 3))
 @functools.partial(jax.vmap, in_axes=(None, None, 0, None, None, None))

@@ -5,6 +5,7 @@ import jax.numpy as jnp
 
 from custom_fm import FlowMap, Interpolant
 
+
 def mean_reduce(func):
     """
     A decorator that computes the mean of the output of the decorated function.
@@ -17,6 +18,7 @@ def mean_reduce(func):
         return jnp.mean(batched_outputs)
 
     return wrapper
+
 
 def eulerian(
     params,
@@ -66,15 +68,8 @@ def eulerian(
 
     return jnp.sum((jvp + It_dot) ** 2)
 
-def lagrangian(
-    params,
-    x0,
-    x1,
-    s: float,
-    t: float,
-    X: FlowMap,
-    rng=None
-) -> float:
+
+def lagrangian(params, x0, x1, s: float, t: float, X: FlowMap, rng=None) -> float:
     """Direct 'Lagrangian' loss for flow map matching."""
 
     interp = Interpolant(

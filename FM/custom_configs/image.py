@@ -1,5 +1,6 @@
 import ml_collections
 
+
 def get_config():
     config = ml_collections.ConfigDict()
     config.name = "image"
@@ -56,7 +57,9 @@ def get_config():
     config.network = ml_collections.ConfigDict()
     config.network.network_type = "edm2"
     config.network.load_path = ""  # No pretrained model
-    config.network.img_resolution = config.data.image_size  # Height (or width, they're equal)
+    config.network.img_resolution = (
+        config.data.image_size
+    )  # Height (or width, they're equal)
     config.network.img_channels = config.data.num_channels
     config.network.label_dim = (
         config.data.num_classes if config.training.conditional else 0
@@ -76,7 +79,7 @@ def get_config():
             "dropout": 0.13,
         },
     }
-    
+
     # logging config
     config.logging = ml_collections.ConfigDict()
     config.logging.output_dir = "checkpoints"

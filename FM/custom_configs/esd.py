@@ -1,5 +1,6 @@
 import ml_collections
 
+
 def get_config():
     config = ml_collections.ConfigDict()
     config.name = "eulerian"
@@ -18,7 +19,7 @@ def get_config():
     config.train.eval_bs = 1024
 
     config.network = ml_collections.ConfigDict()
-    config.network.network_type = 'mlp'
+    config.network.network_type = "mlp"
     config.network.n_hidden = 3
     config.network.n_neurons = 256
     config.network.d = 2

@@ -18,3 +18,4 @@ samples/
 *.png
 *.npz
 *.csv
+wandb/

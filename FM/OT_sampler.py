@@ -1,11 +1,10 @@
 import warnings
 from functools import partial
-from typing import  Union
+from typing import Union
 
 import numpy as np
 import ot as pot
 import torch
-
 
 
 class OTPlanSampler:
@@ -50,7 +49,9 @@ class OTPlanSampler:
         elif method == "sinkhorn":
             self.ot_fn = partial(pot.sinkhorn, reg=reg)
         elif method == "unbalanced":
-            self.ot_fn = partial(pot.unbalanced.sinkhorn_knopp_unbalanced, reg=reg, reg_m=reg_m)
+            self.ot_fn = partial(
+                pot.unbalanced.sinkhorn_knopp_unbalanced, reg=reg, reg_m=reg_m
+            )
         elif method == "partial":
             self.ot_fn = partial(pot.partial.entropic_partial_wasserstein, reg=reg)
         else:

@@ -41,11 +41,10 @@ def wasserstein(
     return ret
 
 
-
 def NPE_batch(param, x0, x1, interp, X, method="exact", key=jax.random.PRNGKey(0)):
     """
     JAX version of NPE_batch with external wasserstein function.
-    
+
     Args:
         param: model parameters.
         x0, x1: jnp.ndarray of shape (N, D).
@@ -56,11 +55,12 @@ def NPE_batch(param, x0, x1, interp, X, method="exact", key=jax.random.PRNGKey(0
     """
     # PE = E_{x(0)\sim q(x0)} [\int_0^1 ||v_\theta(t,x(t))||^2 dt]
     N, D = x0.shape
-    
+
     key, subkey = jax.random.split(key)
     # sample s ~ Uniform(0,1)
-    s = jax.random.uniform(subkey, (N, ), dtype=x0.dtype)
+    s = jax.random.uniform(subkey, (N,), dtype=x0.dtype)
     t = jnp.ones((N,))
+
     @partial(jax.vmap, in_axes=(None, 0, 0, 0, 0))
     def compute_ds_Xs1(param, x0, x1, s, t):
         # compute interpolant
@@ -70,7 +70,7 @@ def NPE_batch(param, x0, x1, interp, X, method="exact", key=jax.random.PRNGKey(0
         X1s = X.apply(param, t, s, Is)
         ds_Xs1 = X.apply(param, s, t, X1s, method="partial_s")
         return ds_Xs1
-    
+
     ds_Xs1 = compute_ds_Xs1(param, x0, x1, s, t)
 
     # PE term
@@ -78,11 +78,11 @@ def NPE_batch(param, x0, x1, interp, X, method="exact", key=jax.random.PRNGKey(0
 
     x0_torch = torch.from_numpy(np.asarray(x0))
     x1_torch = torch.from_numpy(np.asarray(x1))
-    
+
     w2_val = wasserstein(x0_torch, x1_torch, method=method) ** 2
-    
+
     w2 = jnp.array(w2_val)
-    
+
     # final npe
     npe = jnp.abs(PE - w2) / (w2 + 1e-6)
 

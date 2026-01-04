@@ -82,7 +82,6 @@ def save_image(
     return img_path
 
 
-
 def _save_image(config: DictConfig, i, data, nrow=None, prefix="samples"):
     """
     Save images in a grid format using PIL.

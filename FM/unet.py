@@ -37,9 +37,8 @@ def setup_network(
     else:
         raise ValueError(f"Network type {config.network_type} not recognized.")
 
-def initialize_network(
-    net: nn.Module, ex_input: jnp.ndarray, prng_key: jnp.ndarray
-):
+
+def initialize_network(net: nn.Module, ex_input: jnp.ndarray, prng_key: jnp.ndarray):
     ex_s = ex_t = 0.0
     ex_label = 0
 
@@ -54,6 +53,7 @@ def initialize_network(
     num_params = sum(leaf.size for leaf in leaves)
     logging.info(f"Number of parameters: {num_params}")
     return params, prng_key
+
 
 class MLP(nn.Module):
     """Simple MLP network with square weight pattern."""
@@ -83,7 +83,12 @@ class FlowMapMLP(nn.Module):
 
     @nn.compact
     def __call__(
-        self, s: float, t: float, x: jnp.ndarray, label: float = None, train: bool = True
+        self,
+        s: float,
+        t: float,
+        x: jnp.ndarray,
+        label: float = None,
+        train: bool = True,
     ):
         del train
         del label
